@@ -10,18 +10,14 @@
 
 #include "str_intern.h"
 
-// IMPORTANT: Before installing a type, the user
-// is responsible for checking if it exists.
-static HashTable<IdType*> type_table;
-
 /// Fill the type_table.
 void install_type_declarations(Goal goal) {
-    type_table.reserve(goal.type_decls.len);
-    DeclarationVisitor decl_visitor(type_table);
+    DeclarationVisitor decl_visitor(goal.type_decls.len);
     goal.accept(&decl_visitor);
     
     /* Use with test.java */
     // TODO: remove that
+    HashTable<IdType*> type_table = decl_visitor.type_table;
     Type *type = type_table.find(str_intern("A"));
     assert(type);
     IdType *id_type = type->is_IdType();
@@ -39,7 +35,9 @@ void typecheck_init() {
     set_indent_char('*');
 }
 
-Type *typespec_to_type(Typespec tspec) {
+// This is member of the visitor so that we have
+// access to the type table.
+Type* DeclarationVisitor::typespec_to_type(Typespec tspec) {
     switch (tspec.kind) {
     case TYSPEC::UNDEFINED: assert(0);
     case TYSPEC::INT: return new Type(TY::INT);
@@ -48,7 +46,7 @@ Type *typespec_to_type(Typespec tspec) {
     case TYSPEC::ID:
     {
         // Check if it already exists.
-        IdType *type = type_table.find(tspec.id);
+        IdType *type = this->type_table.find(tspec.id);
         if (type) {
             return type;
         }
@@ -61,7 +59,10 @@ Type *typespec_to_type(Typespec tspec) {
 
 /* Declaration Visitor
  */
-DeclarationVisitor::DeclarationVisitor(HashTable<IdType*> type_table) {
+DeclarationVisitor::DeclarationVisitor(size_t ntype_decls) {
+    // IMPORTANT: Before installing a type, the user
+    // is responsible for checking if it exists.
+    this->type_table.reserve(ntype_decls);
 }
 
 void DeclarationVisitor::visit(Goal *goal) {
@@ -83,7 +84,7 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
     assert(!type_decl->is_undefined());
     print_indentation();
     log(type_decl->loc, "TypeDeclaration: ", type_decl->id, "\n");
-    IdType *type = type_table.find(type_decl->id);
+    IdType *type = this->type_table.find(type_decl->id);
     // If it exists and it's declared (i.e. we have processed
     // a type with the same `id`), then we have redeclaration error.
     if (type) {
@@ -124,7 +125,7 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
             type->methods.insert(method->id, method);
         }
     }
-    type_table.insert(type->id, type);
+    this->type_table.insert(type->id, type);
 }
 
 Local *DeclarationVisitor::visit(LocalDeclaration *local_decl) {
@@ -143,7 +144,7 @@ Method *DeclarationVisitor::visit(MethodDeclaration *method_decl) {
     print_indentation();
     log(method_decl->loc, "MethodDeclaration: ", method_decl->id, "\n");
     Method *method = new Method(method_decl->id, method_decl->params.len);
-    method->ret_type = typespec_to_type(method_decl->typespec);
+    method->ret_type = this->typespec_to_type(method_decl->typespec);
     for (LocalDeclaration *ld : method_decl->params) {
         Param* param = ld->accept(this);
         param->type->print();

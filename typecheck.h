@@ -101,14 +101,20 @@ class MainClass;
 class TypeDeclaration;
 class MethodDeclaration;
 class LocalDeclaration;
+class Typespec;
 
 struct DeclarationVisitor {
-    DeclarationVisitor(HashTable<IdType*> type_table);
+    HashTable<IdType*> type_table;
+
+    DeclarationVisitor(size_t ntype_decls);
     void    visit(Goal *g);
     void    visit(MainClass *main_class);
     void    visit(TypeDeclaration *type_decl);
     Local*  visit(LocalDeclaration *local_decl);
     Method* visit(MethodDeclaration *method_decl);
+
+    // Helper function
+    Type *typespec_to_type(Typespec tspec);
 };
 
 /* Prototypes
