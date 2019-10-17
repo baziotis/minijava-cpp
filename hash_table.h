@@ -1,57 +1,95 @@
 #ifndef HASH_TABLE_H
 #define HASH_TABLE_H
 
-#include <type_traits>  // std::is_pointer
-
+#include <assert.h>
+#include <cstring>
+#include <functional>
+#include <type_traits>
 #include "alloc.h"
-#include "buf.h"
 
-// Parallel buffers of ids (const char *) and value (e.g. Method)
-// for faster searching in the ids. The ids are interned
-// so simple pointer comparison works.
+template <typename T, MEM mem, typename H = std::hash<char *>>
+struct HashTable
+{
+    static_assert(std::is_pointer_v<T> && !std::is_same_v<T, void*>,
+        "T must be a pointer and cannot be void *");
 
-// TODO: T is Q*. Impose that Q should have an `id` field so that we
-// pass one thing on insert()?
+    HashTable() = delete;
 
-// Usage notes:
-// 1) A pointer should always be passed as T.
-// 2) It's the user's responsibility to not insert duplicate `id`.
-
-template<typename T>
-struct HashTable {
-    static_assert(std::is_pointer<T>::value, "T must be pointer");
-
-    Buf<const char *> ids;
-    Buf<T> data;
-
-    HashTable() { }
-
-    HashTable(size_t n) {
-        this->reserve(n);
-    }
-
-    void reserve(size_t n) {
-        ids.reserve(n);
-        data.reserve(n);
-    }
-
-    void insert(const char *id, T v) {
-        assert(this->find(id) == NULL);
-        ids.push(id);
-        data.push(v);
-    }
-
-    T find(const char *id) {
-        size_t i = 0;
-        for (const char *ident : ids) {
-            if (ident == id) {
-                return data[i];
-            }
-            ++i;
+    explicit HashTable(size_t buckets)
+        : size{buckets}
+        , ids{static_cast<const char **>(allocate_zero(buckets, mem))}
+        , data{static_cast<T *>(allocate_zero(buckets, mem))}
+    {
+        for (size_t i = 0U; i != size; ++i) {
+            ids[i] = nullptr;
+            data[i] = nullptr;
         }
-        // Can do that because we have verified that T is a pointer.
+    }
+
+    HashTable(const HashTable<T, mem, H> &rhs) = delete;
+    HashTable &operator=(const HashTable<T, mem, H> &rhs) = delete;
+    HashTable(HashTable<T, mem, H> &&rhs) = delete;
+    HashTable &operator=(HashTable<T, mem, H> &&rhs) = delete;
+
+public:
+
+    inline void insert(const char *key, T value) {
+        size_t bucket = hasher(const_cast<char *>(key)) % size;
+        size_t i = bucket;
+        bool wrapped = false;
+        while (!wrapped) {
+            if (ids[i] == nullptr) {
+                ids[i] = key;
+                data[i] = value;
+                return;
+            } else if (ids[i] == key) {
+                assert(false);
+            }
+            i = (i + 1U) % size;
+            wrapped = (i == bucket); 
+        }
+
+        assert(false);
+    }
+
+    inline T find(const char *key) {
+        size_t bucket = hasher(key) % size;
+        size_t i = bucket;
+        bool wrapped = false;
+        while (!wrapped) {
+            if (ids[i] == key) { 
+                return data[i];
+            } else if (ids[i] == nullptr) {
+                return nullptr;
+            }
+
+            i = (i + 1U) % size;
+            wrapped = (i == bucket);
+        }
         return nullptr;
     }
+
+    inline bool contains_key(const char *key) {
+        size_t bucket = hasher(key) % size;
+        size_t i = bucket;
+        bool wrapped = false;
+        while (!wrapped) {
+            if (ids[i] == key) {
+                return true;
+            } else if (ids[i] == nullptr) {
+                return false;
+            }
+            i = (i + 1U) % size;
+            wrapped = (i == bucket);
+        }
+        return false;
+    }
+
+private:
+    const char **ids;
+    size_t size;
+    T *data;
+    H hasher;
 };
 
 #endif
