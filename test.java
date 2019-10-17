@@ -10,13 +10,6 @@ class stefanos {
 class A extends B {
     boolean a;
     int b;
-    int[] b;
-
-    public int test(int c, int[] d, boolean) {
-        int c;
-        a = 3;
-        return 1;
-    }
 
     public int test(int c, int[] d, boolean) {
         int c;
@@ -35,7 +28,7 @@ class C {
     }
 }
 
-class A {
+class D {
     boolean;
     
     public int test2(int, int d) {

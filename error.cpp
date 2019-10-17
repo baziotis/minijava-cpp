@@ -49,14 +49,6 @@ static void red_on() {
     printf("\x1b[31m");
 }
 
-static void yellow_on() {
-    printf("\x1b[93m");
-}
-
-static void yellow_off() {
-    printf("\x1b[0m");
-}
-
 static void red_off() {
     printf("\x1b[0m");
 }
@@ -110,18 +102,6 @@ static void syntax_error_no_ln(Args... args) {
 template <typename... Args> 
 static void syntax_error(Args... args) {
     syntax_error_no_ln(args...);
-    printf("\n");
-}
-
-template <typename... Args> 
-static void typecheck_error(location_t __loc, Args... args) {
-    log(__loc);
-    yellow_on();
-    bold_on();
-    log(" Semantic Error: ");
-    bold_off();
-    yellow_off();
-    log(args...);
     printf("\n");
 }
 

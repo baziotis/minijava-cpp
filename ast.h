@@ -235,7 +235,7 @@ struct LocalDeclaration : public ParsingCustomAllocation {
 };
 
 struct MethodDeclaration : public ParsingCustomAllocation {
-    Typespec typespec;    // return typespec
+    Typespec typespec;
     const char *id;
     Buf<LocalDeclaration*> params;
     Buf<LocalDeclaration*> vars;
@@ -258,9 +258,7 @@ struct MethodDeclaration : public ParsingCustomAllocation {
         id = NULL;
     }
 
-    /* Type-checking
-     */
-    Method *accept(DeclarationVisitor *v) {
+    void accept(DeclarationVisitor *v) {
         v->visit(this);
     }
 };

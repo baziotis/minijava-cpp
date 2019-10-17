@@ -24,7 +24,7 @@ static constexpr size_t roundup(size_t x, size_t n) {
     return ((x)+((n)-1)) & (~((n)-1));
 }
 
-constexpr int NARENAS = (int)MEM::__LEN;
+constexpr int NARENAS = 1;
 constexpr ssize_t ALIGN_SIZE = sizeof(void*);
 constexpr ssize_t BLOCK_TAIL = kilobytes(10);
 
@@ -37,12 +37,11 @@ struct block_t {
     uint8_t *limit; 
 };
 
-// TODO: Insert testing code that we match NARENAS
 // Holder of the first block which is empty. Used only to specify empty
 // arenas.
-block_t first[NARENAS]= { { NULL }, { NULL } };
+block_t first[NARENAS]= { { NULL } };
 // The actual arenas
-block_t *arena[NARENAS] = { &first[0], &first[1] };
+block_t *arena[NARENAS] = { &first[0] };
 
 // List of free blocks. When an arena is free'd
 block_t *freeblocks;
