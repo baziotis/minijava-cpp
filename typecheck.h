@@ -28,7 +28,7 @@ struct Type {
     virtual void print() const;
 };
 
-struct Local{
+struct Local {
     const char *id;
     Type *type;
 
@@ -42,7 +42,7 @@ using Param = Local;
 struct Method {
     const char *id;
     Type *ret_type;
-    Buf<Local*> params;
+    HashTable<Local*> params;
 };
 
 struct IdType : public Type {
@@ -50,7 +50,7 @@ struct IdType : public Type {
     HashTable<Local*> fields;
     HashTable<Method*> methods;
 
-    IdType(TY _kind, const char *_id) : Type(_kind), id(_id) { }
+    IdType(const char *_id) : Type(TY::ID), id(_id) { }
 
     void print() const override;
 };
@@ -64,7 +64,7 @@ class MethodDeclaration;
 class LocalDeclaration;
 
 struct DeclarationVisitor {
-    DeclarationVisitor(HashTable<IdType> type_table);
+    DeclarationVisitor(HashTable<IdType*> type_table);
     void visit(Goal *g);
     void visit(MainClass *main_class);
     void visit(TypeDeclaration *type_decl);

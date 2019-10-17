@@ -3,7 +3,7 @@
 
 #include <stdio.h>    // size_t, ssize_t
 
-enum class MEM { PARSE, TYPECHECK };
+enum class MEM { PARSE, TYPECHECK, __LEN };
 
 void *allocate(size_t n, MEM enum_ar);
 void *allocate_zero(size_t n, MEM ar);

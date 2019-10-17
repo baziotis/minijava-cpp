@@ -7,12 +7,21 @@
                             // WARNING: error.h gives access to the global `loc`
 #include "hash_table.h"
 
-static HashTable<IdType> type_table;
+
+#include "str_intern.h"
+
+static HashTable<IdType*> type_table;
 
 /// Fill the type_table.
 void install_type_declarations(Goal goal) {
+    type_table.reserve(goal.type_decls.len);
     DeclarationVisitor decl_visitor(type_table);
     goal.accept(&decl_visitor);
+    
+    /* Use with test.java */
+    // TODO: remove that
+    Type *type = type_table.find(str_intern("A"));
+    assert(type);
 }
 
 void typecheck_init() {
@@ -25,15 +34,14 @@ Type *typespec_to_type(Typespec tspec) {
     case TYSPEC::INT: return new Type(TY::INT);
     case TYSPEC::ARR: return new Type(TY::ARR);
     case TYSPEC::BOOL: return new Type(TY::BOOL);
-    case TYSPEC::ID: return new IdType(TY::ID, tspec.id);
+    case TYSPEC::ID: return new IdType(tspec.id);
     default: assert(0);
     }
 }
 
 /* Declaration Visitor
  */
-DeclarationVisitor::DeclarationVisitor(HashTable<IdType> type_table) {
-    printf("INITIALIZED\n");
+DeclarationVisitor::DeclarationVisitor(HashTable<IdType*> type_table) {
 }
 
 void DeclarationVisitor::visit(Goal *goal) {
@@ -52,16 +60,19 @@ void DeclarationVisitor::visit(MainClass *main_class) {
 
 void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
     LOG_SCOPE;
-    assert(!type_decl->is_undefined());
     print_indentation();
+    assert(!type_decl->is_undefined());
     log(type_decl->loc, "TypeDeclaration: ", type_decl->id, "\n");
+    IdType *type = new IdType(type_decl->id);
     for (LocalDeclaration *ld : type_decl->vars) {
         Field* field = ld->accept(this);
         field->type->print();
+        type->fields.insert(field->id, field);
     }
     for (MethodDeclaration *md : type_decl->methods) {
         md->accept(this);
     }
+    type_table.insert(type->id, type);
 }
 
 Local *DeclarationVisitor::visit(LocalDeclaration *local_decl) {
