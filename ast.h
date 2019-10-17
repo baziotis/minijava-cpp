@@ -235,7 +235,7 @@ struct LocalDeclaration : public ParsingCustomAllocation {
 };
 
 struct MethodDeclaration : public ParsingCustomAllocation {
-    Typespec typespec;
+    Typespec typespec;    // return typespec
     const char *id;
     Buf<LocalDeclaration*> params;
     Buf<LocalDeclaration*> vars;

@@ -17,6 +17,12 @@ class A extends B {
         a = 3;
         return 1;
     }
+
+    public int test(int c, int[] d, boolean) {
+        int c;
+        a = 3;
+        return 1;
+    }
 }
 
 class C {

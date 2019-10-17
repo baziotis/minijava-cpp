@@ -670,6 +670,7 @@ static MethodDeclaration *parse_method() {
         goto Lerror;
     }
     tyspec = parse_typespec();
+    method_decl->typespec = tyspec;
     if (tyspec.kind == TYSPEC::UNDEFINED) {
         goto Lerror;
     }

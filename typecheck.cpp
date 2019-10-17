@@ -88,8 +88,8 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
     // a type with the same `id`), then we have redeclaration error.
     if (type) {
         if (type->is_defined()) {
-            typecheck_error(type_decl->loc, "Type with id: ", type_decl->id,
-                            " has already been declared.");
+            typecheck_error(type_decl->loc, "Type with id: `", type_decl->id,
+                            "` has already been declared");
             // TODO: Make undefined and return.
             return;
         } else {
@@ -102,8 +102,8 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
         // Check redeclaration
         Field *field = type->fields.find(ld->id);
         if (field) {
-            typecheck_error(ld->loc, "In class with id: ", type_decl->id,
-                            ", redeclaration of field with id: ", field->id, ".");
+            typecheck_error(ld->loc, "In class with id: `", type_decl->id,
+                            "`, redeclaration of field with id: `", field->id, "`");
             // TODO: Make undefined (the whole type) and return.
         } else {
             field = ld->accept(this);
@@ -112,9 +112,17 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
         }
     }
     for (MethodDeclaration *md : type_decl->methods) {
-        Method *method = md->accept(this);
-        //method->print();
-        type->methods.insert(method->id, method);
+        // Check redeclaration
+        Method *method = type->methods.find(md->id);
+        if (method) {
+            typecheck_error(md->loc, "In class with id: `", type_decl->id,
+                            "`, redeclaration of method with id: `", method->id, "`");
+            // TODO: Make undefined (the whole type) and return.
+        } else {
+            method = md->accept(this);
+            //method->print();
+            type->methods.insert(method->id, method);
+        }
     }
     type_table.insert(type->id, type);
 }
@@ -131,10 +139,11 @@ Local *DeclarationVisitor::visit(LocalDeclaration *local_decl) {
 
 Method *DeclarationVisitor::visit(MethodDeclaration *method_decl) {
     LOG_SCOPE;
+    assert(!method_decl->is_undefined());
     print_indentation();
     log(method_decl->loc, "MethodDeclaration: ", method_decl->id, "\n");
-    assert(!method_decl->is_undefined());
     Method *method = new Method(method_decl->id, method_decl->params.len);
+    method->ret_type = typespec_to_type(method_decl->typespec);
     for (LocalDeclaration *ld : method_decl->params) {
         Param* param = ld->accept(this);
         param->type->print();
