@@ -10,6 +10,13 @@
 // for faster searching in the ids. The ids are interned
 // so simple pointer comparison works.
 
+// TODO: T is Q*. Impose that Q should have an `id` field so that we
+// pass one thing on insert()?
+
+// Usage notes:
+// 1) A pointer should always be passed as T.
+// 2) It's the user's responsibility to not insert duplicate `id`.
+
 template<typename T>
 struct HashTable {
     static_assert(std::is_pointer<T>::value, "T must be pointer");
@@ -29,6 +36,7 @@ struct HashTable {
     }
 
     void insert(const char *id, T v) {
+        assert(this->find(id) == NULL);
         ids.push(id);
         data.push(v);
     }

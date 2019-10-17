@@ -258,7 +258,9 @@ struct MethodDeclaration : public ParsingCustomAllocation {
         id = NULL;
     }
 
-    void accept(DeclarationVisitor *v) {
+    /* Type-checking
+     */
+    Method *accept(DeclarationVisitor *v) {
         v->visit(this);
     }
 };
