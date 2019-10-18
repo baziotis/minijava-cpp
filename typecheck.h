@@ -1,6 +1,7 @@
 #ifndef TYPECHECK_H
 #define TYPECHECK_H
 
+#include "alloc.h"
 #include "buf.h"
 #include "hash_table.h"
 
@@ -28,6 +29,7 @@ enum class TY {
 // - Type with id: X does not have field Y, check declaration in: Z
 // - In class X, the field with id: Y has been redeclared in Z
 
+template<typename T> using HashTable = __HashTable<T, MEM::TYPECHECK>;
 struct IdType;
 
 struct Type {

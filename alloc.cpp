@@ -169,8 +169,7 @@ void test_alloc() {
 
     // Use a new arena but verify that we will take the second block
     // of `freeblocks`. This is the one we got with `c`.
-    // TODO:
-    //void *e = allocate(BLOCK_TAIL, MEM::THE_NEW_ARENA_WHEN_IT_EXISTS);
-    //assert(e == c);
+    void *e = allocate(BLOCK_TAIL, MEM::TYPECHECK);
+    assert(e == c);
 }
 */
