@@ -5,6 +5,81 @@
 #include "buf.h"
 #include "hash_table.h"
 
+template<typename T> using HashTable = __HashTable<T, MEM::TYPECHECK>;
+// Sort of like combining a Buf and a HashTable
+template<typename T>
+struct SerializedHashTable {
+    HashTable<T> table;
+    T *serialized;
+    size_t len;
+
+    SerializedHashTable() { }
+
+    inline void insert(const char *id, T v) {
+        // Insert into serialized data
+        serialized[len] = v;
+        len = len + 1;
+        // Insert into HT
+        table.insert(id, v);
+    }
+
+    inline void reserve(size_t n) {
+        len = 0;
+        serialized = (T *) allocate(n * sizeof(T), MEM::TYPECHECK);
+        table.reserve(n);
+    }
+
+    inline T find(const char *key) {
+        return table.find(key);
+    }
+
+    inline T* begin() { return this->serialized; }
+    inline T* end() { return &this->serialized[len]; }
+};
+
+/* Pass 1 Visitor
+ */
+struct Goal;
+struct MainClass;
+struct TypeDeclaration;
+struct LocalDeclaration;
+struct MethodDeclaration;
+struct Typespec;
+
+struct Type;
+struct IdType;
+struct Local;
+struct Method;
+
+struct DeclarationVisitor {
+    SerializedHashTable<IdType*> type_table;
+
+    DeclarationVisitor(size_t ntype_decls);
+    void    visit(Goal *g);
+    void    visit(MainClass *main_class);
+    void    visit(TypeDeclaration *type_decl);
+    Local*  visit(LocalDeclaration *local_decl);
+    Method* visit(MethodDeclaration *method_decl);
+
+    // Helper functions
+    IdType *id_to_type(const char *id);
+    Type *typespec_to_type(Typespec tspec);
+};
+
+/* Pass 2 Visitor
+ */
+struct MainTypeCheckVisitor {
+    SerializedHashTable<IdType*> type_table;
+
+    MainTypeCheckVisitor(SerializedHashTable<IdType*> ttable) :
+        type_table(ttable) { }
+    void    visit(Goal *g);
+    void    visit(MainClass *main_class);
+    void    visit(IdType *type);
+    void    visit(LocalDeclaration *local_decl);
+    void    visit(MethodDeclaration *method_decl);
+};
+
 /* Types
 */
 struct TypeCheckCustomAllocation {
@@ -29,7 +104,6 @@ enum class TY {
 // - Type with id: X does not have field Y, check declaration in: Z
 // - In class X, the field with id: Y has been redeclared in Z
 
-template<typename T> using HashTable = __HashTable<T, MEM::TYPECHECK>;
 struct IdType;
 
 struct Type : public TypeCheckCustomAllocation {
@@ -81,7 +155,7 @@ struct Method : public TypeCheckCustomAllocation {
 
 struct IdType : public Type {
     HashTable<Local*> fields;
-    HashTable<Method*> methods;
+    SerializedHashTable<Method*> methods;
     IdType *parent;
     const char *id;
 
@@ -105,36 +179,20 @@ struct IdType : public Type {
         parent = _parent;
     }
 
+    void print() const override;
+
     IdType *is_IdType() override { return this; };
 
-    void print() const override;
+    void accept(MainTypeCheckVisitor *v) {
+        v->visit(this);
+    }
+
 };
 
-/* Declaration Visitor
- */
-class Goal;
-class MainClass;
-class TypeDeclaration;
-class Typespec;
 
-struct DeclarationVisitor {
-    HashTable<IdType*> type_table;
-
-    DeclarationVisitor(size_t ntype_decls);
-    void    visit(Goal *g);
-    void    visit(MainClass *main_class);
-    void    visit(TypeDeclaration *type_decl);
-    Local*  visit(LocalDeclaration *local_decl);
-    Method* visit(MethodDeclaration *method_decl);
-
-    // Helper functions
-    IdType *id_to_type(const char *id);
-    Type *typespec_to_type(Typespec tspec);
-};
 
 /* Prototypes
  */
-void install_type_declarations(Goal goal);
-void typecheck_init();
+void typecheck(Goal goal);
 
 #endif

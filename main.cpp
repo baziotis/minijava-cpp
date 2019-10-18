@@ -42,8 +42,7 @@ int main() {
     // TODO: Check for fatal parsing errors here and don't continue
     // if they exist.
     
-    typecheck_init();   
-    install_type_declarations(goal);
+    typecheck(goal);
 }
 
 /* For a method

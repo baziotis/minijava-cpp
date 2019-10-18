@@ -7,18 +7,20 @@
 #include "error.h"          // log()
                             // WARNING: error.h gives access to the global `loc`
 #include "hash_table.h"
-
-
 #include "str_intern.h"
 
+void typecheck_init() {
+    set_indent_char('*');
+}
+
 /// Fill the type_table.
-void install_type_declarations(Goal goal) {
-    DeclarationVisitor decl_visitor(goal.type_decls.len);
-    goal.accept(&decl_visitor);
+SerializedHashTable<IdType*> install_type_declarations(Goal *goal) {
+    DeclarationVisitor decl_visitor(goal->type_decls.len);
+    goal->accept(&decl_visitor);
     
     /* Use with test.java */
     // TODO: remove that
-    HashTable<IdType*> type_table = decl_visitor.type_table;
+    SerializedHashTable<IdType*> type_table = decl_visitor.type_table;
     Type *type = type_table.find(str_intern("A"));
     assert(type);
     IdType *id_type = type->is_IdType();
@@ -52,13 +54,27 @@ void install_type_declarations(Goal goal) {
     // Free memory that was used for allocating objects
     // for parsing that doenot persist in pass 2 of type-checking.
     deallocate(MEM::PARSE_TEMP);
+
+    return decl_visitor.type_table;
 }
 
-void typecheck_init() {
-    set_indent_char('*');
+void full_typecheck(Goal *goal, SerializedHashTable<IdType*> type_table) {
+    MainTypeCheckVisitor main_visitor(type_table);
+    goal->accept(&main_visitor);
+}
+
+void typecheck(Goal goal) {
+    typecheck_init();
+    // Pass 1
+    SerializedHashTable<IdType*> type_table = install_type_declarations(&goal);
+    printf("\n\n\n\n");
+    // Pass 2
+    full_typecheck(&goal, type_table);
 }
 
 
+/* Declaration Visitor
+ */
 IdType* DeclarationVisitor::id_to_type(const char *id) {
     // Check if it already exists.
     IdType *type = this->type_table.find(id);
@@ -85,8 +101,6 @@ Type* DeclarationVisitor::typespec_to_type(Typespec tspec) {
     }
 }
 
-/* Declaration Visitor
- */
 DeclarationVisitor::DeclarationVisitor(size_t ntype_decls) {
     // IMPORTANT: Before installing a type, the user
     // is responsible for checking if it exists.
@@ -95,7 +109,7 @@ DeclarationVisitor::DeclarationVisitor(size_t ntype_decls) {
 
 void DeclarationVisitor::visit(Goal *goal) {
     LOG_SCOPE;
-    //debug_print("Goal\n");
+    debug_print("Pass1::Goal\n");
     goal->main_class.accept(this);
     for (TypeDeclaration *type_decl : goal->type_decls) {
         type_decl->accept(this);
@@ -104,14 +118,14 @@ void DeclarationVisitor::visit(Goal *goal) {
 
 void DeclarationVisitor::visit(MainClass *main_class) {
     LOG_SCOPE;
-    //debug_print("MainClass: %s\n", main_class->id);
+    debug_print("Pass1::MainClass: %s\n", main_class->id);
 }
 
 void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
     LOG_SCOPE;
     assert(!type_decl->is_undefined());
     print_indentation();
-    log(type_decl->loc, "TypeDeclaration: ", type_decl->id, "\n");
+    log(type_decl->loc, "Pass1::TypeDeclaration: ", type_decl->id, "\n");
     IdType *type = this->type_table.find(type_decl->id);
     // If it exists and it's declared (i.e. we have processed
     // a type with the same `id`), then we have redeclaration error.
@@ -207,14 +221,26 @@ Method *DeclarationVisitor::visit(MethodDeclaration *method_decl) {
     return method;
 }
 
-/* Misc
+/* Main TypeCheck Visitor (Pass 2)
  */
-Method::Method(MethodDeclaration *method_decl) {
-    id = method_decl->id;
-    locals.reserve(method_decl->params.len + method_decl->vars.len);
-    vars = method_decl->vars;
-    stmts = method_decl->stmts;
-    ret_expr = method_decl->ret;
+void MainTypeCheckVisitor::visit(Goal *goal) {
+    LOG_SCOPE;
+    debug_print("MainTypeCheck::Goal\n");
+    goal->main_class.accept(this);
+    for (IdType *type : this->type_table) {
+        type->accept(this);
+    }
+}
+
+void MainTypeCheckVisitor::visit(MainClass *main_class) {
+    LOG_SCOPE;
+    //debug_print("MainTypeCheck::MainClass\n");
+}
+
+void MainTypeCheckVisitor::visit(IdType *type) {
+    LOG_SCOPE;
+    assert(type->is_IdType());
+    debug_print("MainTypeCheck::IdType %s\n", type->id);
 }
 
 /* Types
@@ -236,6 +262,14 @@ void Type::print() const {
     case TY::ID: assert(0);
     default: assert(0);
     }
+}
+
+Method::Method(MethodDeclaration *method_decl) {
+    id = method_decl->id;
+    locals.reserve(method_decl->params.len + method_decl->vars.len);
+    vars = method_decl->vars;
+    stmts = method_decl->stmts;
+    ret_expr = method_decl->ret;
 }
 
 void Method::print() const {

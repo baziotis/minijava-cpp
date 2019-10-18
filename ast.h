@@ -108,7 +108,7 @@ struct Statement : public ParsingPersistentAllocation {
 
     virtual void print() const = 0;
 
-    /* Type-checking
+    /* Type-checking - Pass 1
     */
     void accept(DeclarationVisitor *v) {
         assert(0);
@@ -242,7 +242,7 @@ struct LocalDeclaration : public ParsingTemporaryAllocation {
 
     void print() const;
 
-    /* Type-checking
+    /* Type-checking - Pass 1
     */
     Local *accept(DeclarationVisitor *v) {
         v->visit(this);
@@ -274,8 +274,8 @@ struct MethodDeclaration : public ParsingTemporaryAllocation {
         id = NULL;
     }
 
-    /* Type-checking
-     */
+    /* Type-checking - Pass 1
+    */
     Method *accept(DeclarationVisitor *v) {
         v->visit(this);
     }
@@ -303,6 +303,8 @@ struct TypeDeclaration : public ParsingTemporaryAllocation {
         return id == NULL && extends == NULL;
     }
 
+    /* Type-checking - Pass 1
+    */
     void accept(DeclarationVisitor *v) {
         v->visit(this);
     }
@@ -323,11 +325,19 @@ struct MainClass : public ParsingPersistentAllocation {
         return id == NULL;
     }
 
+    void print() const;
+
+    /* Type-checking - Pass 1
+    */
     void accept(DeclarationVisitor *v) {
         v->visit(this);
     }
 
-    void print() const;
+    /* Type-checking - Pass 2
+     */
+    void accept(MainTypeCheckVisitor *v) {
+        v->visit(this);
+    }
 };
 
 struct Goal : public ParsingPersistentAllocation {
@@ -337,7 +347,15 @@ struct Goal : public ParsingPersistentAllocation {
 
     void print() const;
 
+    /* Type-checking - Pass 1
+    */
     void accept(DeclarationVisitor *v) {
+        v->visit(this);
+    }
+    
+    /* Type-checking - Pass 2
+     */
+    void accept(MainTypeCheckVisitor *v) {
         v->visit(this);
     }
 };

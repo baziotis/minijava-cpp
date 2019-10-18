@@ -27,10 +27,6 @@ struct __HashTable
 
     __HashTable() { }
 
-    explicit __HashTable(size_t nelements) {
-        this->reserve(nelements);
-    }
-
     // TODO: Uncomment those
     // Disallow Copy Constructor
     //__HashTable(const __HashTable<T, mem> &rhs) = delete;
