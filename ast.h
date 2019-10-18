@@ -70,8 +70,16 @@ struct Expression : public ParsingPersistentAllocation {
         const char *id;
     };
 
+    bool is_undefined() const {
+        return kind == EXPR::UNDEFINED;
+    }
+
     Type *accept(DeclarationVisitor *v) {
         assert(0);
+    }
+
+    virtual void accept(MainTypeCheckVisitor *v) {
+        v->visit(this);
     }
 };
 
@@ -82,6 +90,10 @@ struct BinaryExpression : public Expression {
         // for a not so usual type of Expression.
         MessageSendData *msd;
     };
+
+    void accept(MainTypeCheckVisitor *v) override {
+        v->visit(this);
+    }
 };
 
 

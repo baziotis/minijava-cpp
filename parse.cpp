@@ -708,9 +708,13 @@ static MethodDeclaration *parse_method() {
                      method_decl->id);
     }
     expr = parse_expr();
-    if (expr->kind == EXPR::UNDEFINED) {
+    if (expr->is_undefined()) {
         syntax_error("Invalid return expression in method with id: ",
                      method_decl->id);
+        // We don't want to make this undefined so that this method
+        // goes to typecheck, so that its statements are at least
+        // type-checked. That means we need to handle the case
+        // where the ret expr is undefined _there_.
     }
     method_decl->ret = expr;
     if (!match_token(TOK::SEMI)) {

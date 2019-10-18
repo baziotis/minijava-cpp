@@ -250,6 +250,24 @@ void MainTypeCheckVisitor::visit(IdType *type) {
 void MainTypeCheckVisitor::visit(Method *method) {
     LOG_SCOPE;
     debug_print("MainTypeCheck::Method %s\n", method->id);
+    
+    // An undefined return expression may actually end up here.
+    // Check parse.cpp
+    if (!method->ret_expr->is_undefined()) {
+        method->ret_expr->accept(this);
+    }
+}
+
+
+void MainTypeCheckVisitor::visit(Expression *expr) {
+    LOG_SCOPE;
+    assert(!expr->is_undefined());
+    debug_print("MainTypeCheck::Expression\n");
+}
+
+void MainTypeCheckVisitor::visit(BinaryExpression *bin_expr) {
+    LOG_SCOPE;
+    assert(!bin_expr->is_undefined());
 }
 
 /* Types

@@ -45,6 +45,8 @@ struct TypeDeclaration;
 struct LocalDeclaration;
 struct MethodDeclaration;
 struct Typespec;
+struct Expression;
+struct BinaryExpression;
 
 struct Type;
 struct IdType;
@@ -77,6 +79,9 @@ struct MainTypeCheckVisitor {
     void    visit(MainClass *main_class);
     void    visit(IdType *type);
     void    visit(Method *method);
+
+    void    visit(Expression *expr);
+    void    visit(BinaryExpression *bin_expr);
 };
 
 /* Types

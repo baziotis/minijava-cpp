@@ -36,7 +36,7 @@ class C {
 
     public int test4(D d, int d) {
         int c;
-        return 2;
+        return ;
     }
 }
 
