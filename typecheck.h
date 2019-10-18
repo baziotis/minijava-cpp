@@ -32,7 +32,7 @@ enum class TY {
 template<typename T> using HashTable = __HashTable<T, MEM::TYPECHECK>;
 struct IdType;
 
-struct Type {
+struct Type : public TypeCheckCustomAllocation {
     TY kind;
 
     Type() : kind(TY::UNDEFINED) { }
@@ -45,7 +45,7 @@ struct Type {
     virtual void print() const;
 };
 
-struct Local {
+struct Local  : public TypeCheckCustomAllocation {
     const char *id;
     Type *type;
 
@@ -63,7 +63,7 @@ class LocalDeclaration;
 class Statement;
 class Expression;
 
-struct Method {
+struct Method : public TypeCheckCustomAllocation {
     const char *id;
     Type *ret_type;
     HashTable<Local*> locals;
