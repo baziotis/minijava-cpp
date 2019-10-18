@@ -7,16 +7,27 @@
 #include "common.h"
 
 // TODO: Should the `Buf`s have the actual type and not a pointer to it?
+// TODO: Separate memory allocation to arenas that can be thrown after
+//       pass 1 of typechecking and those that can't. For example, in
+//       a MethodDeclaration, we can throw the `params` but not `vars`,
+//       `smts` and `ret`.
+//       A TypeDeclaration can completely be thrown away, except for its
+//       `methods`. 
 
 // Pre-declarations
 struct Expression;
 
-struct ParsingCustomAllocation {
-    location_t loc;
+struct ParsingPersistentAllocation {
     // TODO: We could have a memory arena per class
     // but that would require some changes to the allocator.
     static void *operator new(size_t size) {
-        return allocate_zero(size, MEM::PARSE);
+        return allocate_zero(size, MEM::PARSE_PERSIST_TYPECHECK_PASS2);
+    }
+};
+
+struct ParsingTemporaryAllocation {
+    static void *operator new(size_t size) {
+        return allocate_zero(size, MEM::PARSE_TEMP);
     }
 };
 
@@ -43,12 +54,14 @@ enum class EXPR {
     __LAST = ALLOC,
 };
 
-struct MessageSendData : public ParsingCustomAllocation {
+struct MessageSendData : public ParsingPersistentAllocation {
+    location_t loc;
     const char *id;
     Buf<Expression*> expr_list;
 };
 
-struct Expression : public ParsingCustomAllocation {
+struct Expression : public ParsingPersistentAllocation {
+    location_t loc;
     EXPR kind;
     union {
         Expression *e1;
@@ -85,7 +98,8 @@ enum struct STMT {
     PRINT
 };
 
-struct Statement : public ParsingCustomAllocation {
+struct Statement : public ParsingPersistentAllocation {
+    location_t loc;
     STMT kind;
 
     Statement() { kind = STMT::UNDEFINED; }
@@ -208,7 +222,8 @@ struct Typespec {
 /* Declarations
  */
 // vars and parameters
-struct LocalDeclaration : public ParsingCustomAllocation {
+struct LocalDeclaration : public ParsingTemporaryAllocation {
+    location_t loc;
     Typespec typespec;
     const char *id;
 
@@ -234,7 +249,8 @@ struct LocalDeclaration : public ParsingCustomAllocation {
     }
 };
 
-struct MethodDeclaration : public ParsingCustomAllocation {
+struct MethodDeclaration : public ParsingTemporaryAllocation {
+    location_t loc;
     Typespec typespec;    // return typespec
     const char *id;
     Buf<LocalDeclaration*> params;
@@ -265,15 +281,15 @@ struct MethodDeclaration : public ParsingCustomAllocation {
     }
 };
 
-struct TypeDeclaration : public ParsingCustomAllocation {
+struct TypeDeclaration : public ParsingTemporaryAllocation {
+    location_t loc;
     const char *id;
     const char *extends;
     Buf<LocalDeclaration*> vars;
     Buf<MethodDeclaration*> methods;
 
     TypeDeclaration() {
-        id = NULL;
-        extends = NULL;
+        this->make_undefined();
     }
 
     void print() const;
@@ -292,7 +308,8 @@ struct TypeDeclaration : public ParsingCustomAllocation {
     }
 };
 
-struct MainClass : public ParsingCustomAllocation {
+struct MainClass : public ParsingPersistentAllocation {
+    location_t loc;
     const char *id;
     // `LocalDeclaration`s and `Statement`s of main()
     Buf<LocalDeclaration*> vars;
@@ -313,7 +330,8 @@ struct MainClass : public ParsingCustomAllocation {
     void print() const;
 };
 
-struct Goal : public ParsingCustomAllocation {
+struct Goal : public ParsingPersistentAllocation {
+    location_t loc;
     MainClass main_class;
     Buf<TypeDeclaration*> type_decls;
 

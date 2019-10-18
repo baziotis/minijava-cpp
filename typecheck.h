@@ -54,18 +54,27 @@ struct Local {
 
 };
 
+using Var = Local;
 using Field = Local;
 using Param = Local;
+
+class MethodDeclaration;
+class LocalDeclaration;
+class Statement;
+class Expression;
 
 struct Method {
     const char *id;
     Type *ret_type;
-    HashTable<Local*> params;
+    HashTable<Local*> locals;
+    
+    // Copied from the MethodDeclaration
+    Buf<LocalDeclaration*> vars;
+    Buf<Statement*> stmts;
+    Expression *ret_expr;
 
-    Method() : id(NULL) {}
-    Method(const char *_id, size_t nparams) : id(_id) {
-        params.reserve(nparams);
-    }
+    Method() = delete;
+    Method(MethodDeclaration *method_decl);
 
     void print() const;
 };
@@ -106,8 +115,6 @@ struct IdType : public Type {
 class Goal;
 class MainClass;
 class TypeDeclaration;
-class MethodDeclaration;
-class LocalDeclaration;
 class Typespec;
 
 struct DeclarationVisitor {

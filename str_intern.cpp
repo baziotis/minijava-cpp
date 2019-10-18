@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdlib.h>
 
+#include "alloc.h"
 #include "buf.h"
 #include "str_intern.h"
 
@@ -49,7 +50,7 @@ const char *str_intern_len(const char *str, size_t len) {
             return i.str;
         }
     }
-    char *str_copy = (char*) malloc(len + 1);
+    char *str_copy = (char*) allocate(len + 1, MEM::STR_INTERN);
     memcpy(str_copy, str, len);
     str_copy[len] = 0;
     strings.push(InternedStr{len, str_copy});

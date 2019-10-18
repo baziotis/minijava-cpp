@@ -33,6 +33,11 @@ class C {
         int c;
         return 2;
     }
+
+    public int test4(D d, int d) {
+        int c;
+        return 2;
+    }
 }
 
 class D {
@@ -42,7 +47,7 @@ class D {
 class A {
     boolean;
     
-    public int test2(int, int d) {
+    public int test3(int, int d) {
         int c;
         return 2;
     }

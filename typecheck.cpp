@@ -2,6 +2,7 @@
 #include <stdio.h>
 
 #include "ast.h"
+#include "alloc.h"
 #include "debug_print.h"
 #include "error.h"          // log()
                             // WARNING: error.h gives access to the global `loc`
@@ -46,6 +47,11 @@ void install_type_declarations(Goal goal) {
     assert(B_type->is_IdType());
     assert(A_type->parent);
     assert(A_type->parent == B_type);
+
+
+    // Free memory that was used for allocating objects
+    // for parsing that doenot persist in pass 2 of type-checking.
+    deallocate(MEM::PARSE_TEMP);
 }
 
 void typecheck_init() {
@@ -101,7 +107,6 @@ void DeclarationVisitor::visit(MainClass *main_class) {
     //debug_print("MainClass: %s\n", main_class->id);
 }
 
-// TODO-IMPORTANT: Handle inheritance!
 void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
     LOG_SCOPE;
     assert(!type_decl->is_undefined());
@@ -121,6 +126,7 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
         }
     } else {
         type = new IdType(type_decl->id, type_decl->vars.len, type_decl->methods.len);
+        // TODO: insert it as undefined if it's not correct.
         this->type_table.insert(type->id, type);
     }
     // Handle inheritance
@@ -176,14 +182,39 @@ Method *DeclarationVisitor::visit(MethodDeclaration *method_decl) {
     assert(!method_decl->is_undefined());
     print_indentation();
     log(method_decl->loc, "MethodDeclaration: ", method_decl->id, "\n");
-    Method *method = new Method(method_decl->id, method_decl->params.len);
+    Method *method = new Method(method_decl);
     method->ret_type = this->typespec_to_type(method_decl->typespec);
-    for (LocalDeclaration *ld : method_decl->params) {
-        Param* param = ld->accept(this);
-        param->type->print();
-        method->params.insert(param->id, param);
+    for (LocalDeclaration *par : method_decl->params) {
+        if (method->locals.find(par->id)) {
+            typecheck_error(par->loc, "Parameter `", par->id, "` is already defined",
+                            " in method `", method_decl->id, "`");
+        } else {
+            Param* param = par->accept(this);
+            param->type->print();
+            method->locals.insert(param->id, param);
+        }
+    }
+    for (LocalDeclaration *var : method_decl->vars) {
+        if (method->locals.find(var->id)) {
+            typecheck_error(var->loc, "Variable `", var->id, "` is already defined",
+                            " in method `", method_decl->id, "`");
+        } else {
+            Var *v = var->accept(this);
+            v->type->print();
+            method->locals.insert(v->id, v);
+        }
     }
     return method;
+}
+
+/* Misc
+ */
+Method::Method(MethodDeclaration *method_decl) {
+    id = method_decl->id;
+    locals.reserve(method_decl->params.len + method_decl->vars.len);
+    vars = method_decl->vars;
+    stmts = method_decl->stmts;
+    ret_expr = method_decl->ret;
 }
 
 /* Types
