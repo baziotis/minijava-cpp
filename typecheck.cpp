@@ -14,13 +14,13 @@ void typecheck_init() {
 }
 
 /// Fill the type_table.
-SerializedHashTable<IdType*> install_type_declarations(Goal *goal) {
+TypeTable install_type_declarations(Goal *goal) {
     DeclarationVisitor decl_visitor(goal->type_decls.len);
     goal->accept(&decl_visitor);
     
     /* Use with test.java */
     // TODO: remove that
-    SerializedHashTable<IdType*> type_table = decl_visitor.type_table;
+    TypeTable type_table = decl_visitor.type_table;
     Type *type = type_table.find(str_intern("A"));
     assert(type);
     IdType *id_type = type->is_IdType();
@@ -58,7 +58,7 @@ SerializedHashTable<IdType*> install_type_declarations(Goal *goal) {
     return decl_visitor.type_table;
 }
 
-void full_typecheck(Goal *goal, SerializedHashTable<IdType*> type_table) {
+void full_typecheck(Goal *goal, TypeTable type_table) {
     MainTypeCheckVisitor main_visitor(type_table);
     goal->accept(&main_visitor);
 }
@@ -66,7 +66,7 @@ void full_typecheck(Goal *goal, SerializedHashTable<IdType*> type_table) {
 void typecheck(Goal goal) {
     typecheck_init();
     // Pass 1
-    SerializedHashTable<IdType*> type_table = install_type_declarations(&goal);
+    TypeTable type_table = install_type_declarations(&goal);
     printf("\n\n\n\n");
     // Pass 2
     full_typecheck(&goal, type_table);
@@ -93,18 +93,25 @@ IdType* DeclarationVisitor::id_to_type(const char *id) {
 Type* DeclarationVisitor::typespec_to_type(Typespec tspec) {
     switch (tspec.kind) {
     case TYSPEC::UNDEFINED: assert(0);
-    case TYSPEC::INT: return new Type(TY::INT);
-    case TYSPEC::ARR: return new Type(TY::ARR);
-    case TYSPEC::BOOL: return new Type(TY::BOOL);
+    case TYSPEC::INT: return type_table.int_type;
+    case TYSPEC::ARR: return type_table.int_arr_type;
+    case TYSPEC::BOOL: return type_table.bool_type;
     case TYSPEC::ID: return this->id_to_type(tspec.id);
     default: assert(0);
     }
 }
 
+void TypeTable::initialize(size_t n) {
+    type_table.reserve(n);
+    bool_type = new Type(TY::BOOL);
+    int_type = new Type(TY::INT);
+    int_arr_type = new Type(TY::ARR);
+}
+
 DeclarationVisitor::DeclarationVisitor(size_t ntype_decls) {
     // IMPORTANT: Before installing a type, the user
     // is responsible for checking if it exists.
-    this->type_table.reserve(ntype_decls);
+    this->type_table.initialize(ntype_decls);
 }
 
 void DeclarationVisitor::visit(Goal *goal) {

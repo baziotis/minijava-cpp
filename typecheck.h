@@ -37,6 +37,32 @@ struct SerializedHashTable {
     inline T* end() { return &this->serialized[len]; }
 };
 
+struct IdType;
+struct Type;
+
+// A SerializedHashTable with just hardcoded the primitive types.
+struct TypeTable {
+    Type *bool_type;
+    Type *int_type;
+    Type *int_arr_type;
+    SerializedHashTable<IdType*> type_table;
+
+    TypeTable() { }
+
+    inline void insert(const char *id, IdType* v) {
+        type_table.insert(id, v);
+    }
+
+    void initialize(size_t n);
+
+    inline IdType* find(const char *key) {
+        return type_table.find(key);
+    }
+
+    inline IdType** begin() { return type_table.begin(); }
+    inline IdType** end() { return type_table.end(); }
+};
+
 /* Pass 1 Visitor
  */
 struct Goal;
@@ -48,13 +74,11 @@ struct Typespec;
 struct Expression;
 struct BinaryExpression;
 
-struct Type;
-struct IdType;
 struct Local;
 struct Method;
 
 struct DeclarationVisitor {
-    SerializedHashTable<IdType*> type_table;
+    TypeTable type_table;
 
     DeclarationVisitor(size_t ntype_decls);
     void    visit(Goal *g);
@@ -71,9 +95,9 @@ struct DeclarationVisitor {
 /* Pass 2 Visitor
  */
 struct MainTypeCheckVisitor {
-    SerializedHashTable<IdType*> type_table;
+    TypeTable type_table;
 
-    MainTypeCheckVisitor(SerializedHashTable<IdType*> ttable) :
+    MainTypeCheckVisitor(TypeTable ttable) :
         type_table(ttable) { }
     void    visit(Goal *g);
     void    visit(MainClass *main_class);
