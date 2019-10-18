@@ -47,3 +47,7 @@ class A {
         return 2;
     }
 }
+
+class B {
+    int foo;
+}

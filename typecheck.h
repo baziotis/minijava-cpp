@@ -73,15 +73,16 @@ struct Method {
 struct IdType : public Type {
     HashTable<Local*> fields;
     HashTable<Method*> methods;
+    IdType *parent;
     const char *id;
 
-    IdType() : id(NULL) { }
+    IdType() : id(NULL), parent(NULL) { }
     // For type we've not processed yet (so, we know
     // only its id). But, clarify that it's undefined.
-    IdType(const char *_id) : Type(TY::UNDEFINED), id(_id) { }
+    IdType(const char *_id) : Type(TY::UNDEFINED), id(_id), parent(NULL) { }
     // For type we're currently processing.
     IdType(const char *_id, size_t nfields, size_t nmethods) : 
-        Type(TY::ID), id(_id)
+        Type(TY::ID), id(_id), parent(NULL)
     {
         this->set_sizes(nfields, nmethods);
     }
@@ -89,6 +90,10 @@ struct IdType : public Type {
     void set_sizes(size_t nfields, size_t nmethods) {
         fields.reserve(nfields);
         methods.reserve(nmethods);
+    }
+
+    void set_parent(IdType *_parent) {
+        parent = _parent;
     }
 
     IdType *is_IdType() override { return this; };
@@ -115,7 +120,8 @@ struct DeclarationVisitor {
     Local*  visit(LocalDeclaration *local_decl);
     Method* visit(MethodDeclaration *method_decl);
 
-    // Helper function
+    // Helper functions
+    IdType *id_to_type(const char *id);
     Type *typespec_to_type(Typespec tspec);
 };
 

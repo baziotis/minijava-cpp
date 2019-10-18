@@ -36,10 +36,34 @@ void install_type_declarations(Goal goal) {
     assert(C_type->is_IdType());
     Field *d2_field = C_type->fields.find(str_intern("d2"));
     assert(d2_field->type == D_type);
+
+    // Test inheritance (A is supposed to inherit from B)
+    IdType *B_type = type_table.find(str_intern("B"));
+    IdType *A_type = type_table.find(str_intern("A"));
+    assert(A_type);
+    assert(B_type);
+    assert(A_type->is_IdType());
+    assert(B_type->is_IdType());
+    assert(A_type->parent);
+    assert(A_type->parent == B_type);
 }
 
 void typecheck_init() {
     set_indent_char('*');
+}
+
+
+IdType* DeclarationVisitor::id_to_type(const char *id) {
+    // Check if it already exists.
+    IdType *type = this->type_table.find(id);
+    if (type) {
+        return type;
+    }
+    // Otherwise construct a new one and
+    // save it in the table.
+    type = new IdType(id);
+    this->type_table.insert(type->id, type);
+    return type;
 }
 
 // This is member of the visitor so that we have
@@ -50,18 +74,7 @@ Type* DeclarationVisitor::typespec_to_type(Typespec tspec) {
     case TYSPEC::INT: return new Type(TY::INT);
     case TYSPEC::ARR: return new Type(TY::ARR);
     case TYSPEC::BOOL: return new Type(TY::BOOL);
-    case TYSPEC::ID:
-    {
-        // Check if it already exists.
-        IdType *type = this->type_table.find(tspec.id);
-        if (type) {
-            return type;
-        }
-        // Otherwise construct a new one.
-        type = new IdType(tspec.id);
-        this->type_table.insert(type->id, type);
-        return type;
-    } break;
+    case TYSPEC::ID: return this->id_to_type(tspec.id);
     default: assert(0);
     }
 }
@@ -88,6 +101,7 @@ void DeclarationVisitor::visit(MainClass *main_class) {
     //debug_print("MainClass: %s\n", main_class->id);
 }
 
+// TODO-IMPORTANT: Handle inheritance!
 void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
     LOG_SCOPE;
     assert(!type_decl->is_undefined());
@@ -108,6 +122,11 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
     } else {
         type = new IdType(type_decl->id, type_decl->vars.len, type_decl->methods.len);
         this->type_table.insert(type->id, type);
+    }
+    // Handle inheritance
+    if (type_decl->extends) {
+        IdType *parent = this->id_to_type(type_decl->extends);
+        type->set_parent(parent);
     }
     for (LocalDeclaration *ld : type_decl->vars) {
         // Check redeclaration
