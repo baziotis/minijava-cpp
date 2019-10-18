@@ -29,6 +29,13 @@ void install_type_declarations(Goal goal) {
 
     assert(id_type->fields.find(str_intern("c")) == NULL);
     assert(id_type->methods.find(str_intern("other")) == NULL);
+
+    Type *D_type = type_table.find(str_intern("D"));
+    assert(D_type->is_IdType());
+    IdType *C_type = type_table.find(str_intern("C"));
+    assert(C_type->is_IdType());
+    Field *d2_field = C_type->fields.find(str_intern("d2"));
+    assert(d2_field->type == D_type);
 }
 
 void typecheck_init() {
@@ -51,7 +58,9 @@ Type* DeclarationVisitor::typespec_to_type(Typespec tspec) {
             return type;
         }
         // Otherwise construct a new one.
-        return new IdType(tspec.id);
+        type = new IdType(tspec.id);
+        this->type_table.insert(type->id, type);
+        return type;
     } break;
     default: assert(0);
     }
@@ -98,6 +107,7 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
         }
     } else {
         type = new IdType(type_decl->id, type_decl->vars.len, type_decl->methods.len);
+        this->type_table.insert(type->id, type);
     }
     for (LocalDeclaration *ld : type_decl->vars) {
         // Check redeclaration
@@ -125,10 +135,12 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
             type->methods.insert(method->id, method);
         }
     }
-    this->type_table.insert(type->id, type);
 }
 
 Local *DeclarationVisitor::visit(LocalDeclaration *local_decl) {
+    // Note: It's responsibility of the one who calls this visit
+    // to have assured that a local declaration with the same
+    // id does not exist.
     LOG_SCOPE;
     assert(!local_decl->is_undefined());
     print_indentation();
@@ -139,6 +151,8 @@ Local *DeclarationVisitor::visit(LocalDeclaration *local_decl) {
 }
 
 Method *DeclarationVisitor::visit(MethodDeclaration *method_decl) {
+    // Note: It's responsibility of the one who calls this visit
+    // to have assured that a method with the same id does not exist.
     LOG_SCOPE;
     assert(!method_decl->is_undefined());
     print_indentation();

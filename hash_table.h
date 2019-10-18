@@ -40,7 +40,7 @@ struct __HashTable
     //__HashTable &operator=(__HashTable<T, mem> &&rhs) = delete;
 
     inline void reserve(size_t nelements) {
-        nbuckets = nelements / 0.6;
+        nbuckets = nelements / 0.7;
         ids = (const char **) allocate_zero(nbuckets * sizeof(const char *), mem);
         data = (T *) allocate_zero(nbuckets * sizeof(T), mem);
         for (size_t i = 0; i != nbuckets; ++i) {
@@ -74,6 +74,7 @@ public:
                 this->data[i] = value;
                 return;
             } else if (this->ids[i] == key) {
+                printf("\tDUPLICATE: %s\n", key);
                 // Duplicates are not allowed
                 assert(false);
             }

@@ -35,6 +35,10 @@ class C {
     }
 }
 
+class D {
+    boolean a;
+}
+
 class A {
     boolean;
     
