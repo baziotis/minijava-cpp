@@ -241,6 +241,15 @@ void MainTypeCheckVisitor::visit(IdType *type) {
     LOG_SCOPE;
     assert(type->is_IdType());
     debug_print("MainTypeCheck::IdType %s\n", type->id);
+
+    for (Method *method : type->methods) {
+        method->accept(this);
+    }
+}
+
+void MainTypeCheckVisitor::visit(Method *method) {
+    LOG_SCOPE;
+    debug_print("MainTypeCheck::Method %s\n", method->id);
 }
 
 /* Types
@@ -267,7 +276,6 @@ void Type::print() const {
 Method::Method(MethodDeclaration *method_decl) {
     id = method_decl->id;
     locals.reserve(method_decl->params.len + method_decl->vars.len);
-    vars = method_decl->vars;
     stmts = method_decl->stmts;
     ret_expr = method_decl->ret;
 }

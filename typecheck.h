@@ -76,8 +76,7 @@ struct MainTypeCheckVisitor {
     void    visit(Goal *g);
     void    visit(MainClass *main_class);
     void    visit(IdType *type);
-    void    visit(LocalDeclaration *local_decl);
-    void    visit(MethodDeclaration *method_decl);
+    void    visit(Method *method);
 };
 
 /* Types
@@ -143,7 +142,6 @@ struct Method : public TypeCheckCustomAllocation {
     HashTable<Local*> locals;
     
     // Copied from the MethodDeclaration
-    Buf<LocalDeclaration*> vars;
     Buf<Statement*> stmts;
     Expression *ret_expr;
 
@@ -151,6 +149,10 @@ struct Method : public TypeCheckCustomAllocation {
     Method(MethodDeclaration *method_decl);
 
     void print() const;
+
+    void accept(MainTypeCheckVisitor *v) {
+        v->visit(this);
+    }
 };
 
 struct IdType : public Type {
@@ -186,9 +188,7 @@ struct IdType : public Type {
     void accept(MainTypeCheckVisitor *v) {
         v->visit(this);
     }
-
 };
-
 
 
 /* Prototypes
