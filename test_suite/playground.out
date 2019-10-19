@@ -1,0 +1,39 @@
+playground.java: 15:  Syntax Error: Expected Identifier after type specifier ``, found `)`
+playground.java: 21:  Syntax Error: Expected Identifier after type specifier ``, found `)`
+playground.java: 39:  Syntax Error: Invalid return expression in method with id: test4
+playground.java: 175:  Syntax Error: Expected Identifier after type specifier ``, found `;`
+playground.java: 177:  Syntax Error: Expected Identifier after type specifier ``, found `,`
+playground.java: 13:  Semantic Error: In class with id: `A`, redeclaration of field with id: `b`
+playground.java: 16:  Semantic Error: Variable `c` is already defined in method `test`
+playground.java: 21:  Semantic Error: In class with id: `A`, redeclaration of method with id: `test`
+playground.java: 37:  Semantic Error: Parameter `d` is already defined in method `test4`
+playground.java: 174:  Semantic Error: Type with id: `A` has already been declared
+playground.java: 17:  Semantic Error: In assignment statement, the left-hand-side type: `boolean` does not match that of the right-hand-side: `int`
+playground.java: 18:  Semantic Error: The type: `C` of the return expression does not match the  return type: `int` of method: `test`
+playground.java: 34:  Semantic Error: The type: `int[]` of the return expression does not match the  return type: `int` of method: `test2`
+playground.java: 47:  Semantic Error: Bad operand for unary operator `!`. Operand of boolean type was expected, found: `int`
+playground.java: 47:  Semantic Error: The type: `Undefined Type (Error)` of the return expression does not match the  return type: `boolean` of method: `test_not`
+playground.java: 51:  Semantic Error: Bad right operand for binary operator `&&`. Operand of boolean type was expected, found: `int`
+playground.java: 51:  Semantic Error: The type: `Undefined Type (Error)` of the return expression does not match the  return type: `boolean` of method: `test_and`
+playground.java: 59:  Semantic Error: Bad left operand for binary operator `<`. Operand of int type was expected, found: `int`
+playground.java: 59:  Semantic Error: The type: `Undefined Type (Error)` of the return expression does not match the  return type: `boolean` of method: `test_cmp_wrong`
+playground.java: 67:  Semantic Error: Bad right operand for binary operator `+`. Operand of int type was expected, found: `int`
+playground.java: 67:  Semantic Error: The type: `Undefined Type (Error)` of the return expression does not match the  return type: `int` of method: `test_plus_wrong`
+playground.java: 75:  Semantic Error: Bad right operand for binary operator `-`. Operand of int type was expected, found: `int`
+playground.java: 75:  Semantic Error: The type: `Undefined Type (Error)` of the return expression does not match the  return type: `int` of method: `test_minus_wrong`
+playground.java: 83:  Semantic Error: Bad left operand for binary operator `*`. Operand of int type was expected, found: `boolean`
+playground.java: 83:  Semantic Error: The type: `Undefined Type (Error)` of the return expression does not match the  return type: `int` of method: `test_times_wrong`
+playground.java: 91:  Semantic Error: Bad index expression for index operator `[]`. Operand of int type was expected, found: `int[]`
+playground.java: 91:  Semantic Error: The type: `Undefined Type (Error)` of the return expression does not match the  return type: `int` of method: `test_arr_look_wrong`
+playground.java: 95:  Semantic Error: Bad left operand for index operator `[]`. Operand of int array type was expected, found: int`
+playground.java: 95:  Semantic Error: The type: `Undefined Type (Error)` of the return expression does not match the  return type: `int` of method: `test_arr_look_wrong2`
+playground.java: 112:  Semantic Error: The no. of arguments (1) does not match the number of formal parameters (2) of method with id: `test`
+playground.java: 121:  Semantic Error: In assignment statement, the left-hand-side type: `A` does not match that of the right-hand-side: `int`
+playground.java: 131:  Semantic Error: In array assignment statement, the index expression must have `int` type but has: `boolean`
+playground.java: 136:  Semantic Error: In array assignment statement, the right-hand-side expression must have `int` type but has: `C`
+playground.java: 149:  Semantic Error: Bad left operand for binary operator `<`. Operand of int type was expected, found: `int`
+playground.java: 149:  Semantic Error: In if statement, the condition expression must have `boolean` type but has: `Undefined Type (Error)`
+playground.java: 150:  Semantic Error: In assignment statement, the left-hand-side type: `boolean` does not match that of the right-hand-side: `int`
+playground.java: 163:  Semantic Error: Bad left operand for binary operator `<`. Operand of int type was expected, found: `int`
+playground.java: 163:  Semantic Error: In while statement, the condition expression must have `boolean` type but has: `Undefined Type (Error)`
+playground.java: 164:  Semantic Error: In assignment statement, the left-hand-side type: `boolean` does not match that of the right-hand-side: `int`

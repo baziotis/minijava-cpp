@@ -6,8 +6,11 @@
 #include <sstream>
 
 #include "ast.h"
+#include "common.h"
 #include "parse.h"
 #include "typecheck.h"
+
+config_t config;
 
 const char *filename;
 
@@ -37,6 +40,9 @@ Goal parse_and_return_goal() {
 int main(int argc, char **argv) {
     assert(argc == 2);
     filename = argv[1];
+
+    config.log = false;
+    config.ansi_style = false;
 
     Goal goal = parse_and_return_goal();
 

@@ -3,11 +3,14 @@
 
 #include "ast.h"
 #include "alloc.h"
+#include "common.h"
 #include "debug_print.h"
 #include "error.h"          // log()
                             // WARNING: error.h gives access to the global `loc`
 #include "hash_table.h"
 #include "str_intern.h"
+
+extern config_t config;
 
 void typecheck_init() {
     set_indent_char('*');
@@ -67,7 +70,9 @@ void typecheck(Goal goal) {
     typecheck_init();
     // Pass 1
     TypeTable type_table = install_type_declarations(&goal);
-    printf("\n\n\n\n");
+    if (config.log) {
+        printf("\n");
+    }
     // Pass 2
     full_typecheck(&goal, type_table);
 }
@@ -154,7 +159,7 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
     LOG_SCOPE;
     assert(!type_decl->is_undefined());
     print_indentation();
-    log(type_decl->loc, "Pass1::TypeDeclaration: ", type_decl->id, "\n");
+    debug_log(type_decl->loc, "Pass1::TypeDeclaration: ", type_decl->id, "\n");
     IdType *type = this->type_table.find(type_decl->id);
     // If it exists and it's declared (i.e. we have processed
     // a type with the same `id`), then we have redeclaration error.
@@ -209,7 +214,7 @@ Local *DeclarationVisitor::visit(LocalDeclaration *local_decl) {
     LOG_SCOPE;
     assert(!local_decl->is_undefined());
     print_indentation();
-    log(local_decl->loc, "LocalDeclaration: ", local_decl->id, "\n");
+    debug_log(local_decl->loc, "LocalDeclaration: ", local_decl->id, "\n");
     Type *type = typespec_to_type(local_decl->typespec);
     Local *local = new Local(local_decl->id, type);
     return local;
@@ -229,7 +234,7 @@ Method *DeclarationVisitor::visit(MethodDeclaration *method_decl) {
     LOG_SCOPE;
     assert(!method_decl->is_undefined());
     print_indentation();
-    log(method_decl->loc, "MethodDeclaration: ", method_decl->id, "\n");
+    debug_log(method_decl->loc, "MethodDeclaration: ", method_decl->id, "\n");
     Method *method = new Method(method_decl);
     method->ret_type = this->typespec_to_type(method_decl->typespec);
     for (LocalDeclaration *par : method_decl->params) {
@@ -520,13 +525,13 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
 
         int op;
         if (be->kind == EXPR::PLUS) {
-            int op = '+';
+            op = '+';
             debug_print("MainTypeCheck::PlusExpression\n");
         } else if (be->kind == EXPR::MINUS) {
-            int op = '-';
+            op = '-';
             debug_print("MainTypeCheck::MinusExpression\n");
         } else {
-            int op = '*';
+            op = '*';
             debug_print("MainTypeCheck::TimesExpression\n");
         }
 

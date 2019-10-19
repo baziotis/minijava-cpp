@@ -6,6 +6,7 @@
 #include "ast.h"
 #include "typecheck.h"
 
+extern config_t config;
 extern location_t loc;
 extern const char *filename;
 
@@ -51,27 +52,39 @@ static void log(EXPR kind) {
 }
 
 static void red_on() {
-    printf("\x1b[31m");
+    if (config.ansi_style) {
+        printf("\x1b[31m");
+    }
 }
 
 static void yellow_on() {
-    printf("\x1b[93m");
+    if (config.ansi_style) {
+        printf("\x1b[93m");
+    }
 }
 
 static void yellow_off() {
-    printf("\x1b[0m");
+    if (config.ansi_style) {
+        printf("\x1b[0m");
+    }
 }
 
 static void red_off() {
-    printf("\x1b[0m");
+    if (config.ansi_style) {
+        printf("\x1b[0m");
+    }
 }
 
 static void bold_on() {
-    printf("\x1b[1m");
+    if (config.ansi_style) {
+        printf("\x1b[1m");
+    }
 }
 
 static void bold_off() {
-    printf("\x1b[0m");
+    if (config.ansi_style) {
+        printf("\x1b[0m");
+    }
 }
 
 // TODO: Find a way to iteratve over instead
@@ -79,7 +92,15 @@ static void bold_off() {
 template <typename T, typename... Args> 
 static void log(T t, Args... args) {
     log(t);
-    log(args...); 
+    log(args...);
+}
+
+template <typename T, typename... Args> 
+static void debug_log(T t, Args... args) {
+    if (config.log) {
+        log(t);
+        log(args...);
+    }
 }
 
 template <typename... Args> 
