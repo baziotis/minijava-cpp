@@ -301,9 +301,10 @@ void MainTypeCheckVisitor::visit(Method *method) {
         Type *ret_type = method->ret_expr->accept(this);
         assert(ret_type);
         if (ret_type != method->ret_type) {
-            typecheck_error(method->ret_expr->loc, "The type of the return expression ",
-                            "does not match the return type of method: `",
-                            method->id, "`");
+            typecheck_error(method->ret_expr->loc, "The type: `", ret_type->name(),
+                            "` of the return expression does not match the ",
+                            " return type: `", method->ret_type->name(),
+                            "` of method: `", method->id, "`");
         }
     }
     this->curr_method = NULL;
@@ -326,6 +327,23 @@ static Type *lookup_id(const char *id, Method *method, IdType *cls) {
         local = cls->fields.find(id);
         if (local) {
             return local->type;
+        }
+    }
+    return NULL;
+}
+
+static Method *lookup_method(const char *id, IdType *cls) {
+    // Check current class's methods
+    Method *method = cls->methods.find(id);
+    if (method) {
+        return method;
+    }
+    // Check parent's methods.
+    while (cls->parent) {
+        cls = cls->parent;
+        method = cls->methods.find(id);
+        if (method) {
+            return method;
         }
     }
     return NULL;
@@ -577,7 +595,8 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             return this->type_table.undefined_type;
         }
 
-        Method *method = type->methods.find(be->msd->id);
+        assert(this->curr_class);
+        Method *method = lookup_method(be->msd->id, type);
 
         if (!method) {
             typecheck_error(expr->loc, "Type with id: `", type->id, "` does not ",
@@ -599,7 +618,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             Type *formal_type = method->locals[formal_param_counter]->type;
             if (ety != formal_type) {
                 typecheck_error(expr->loc, "Argument no. ", formal_param_counter + 1,
-                                " with type: `", ety->name(), "does not match ",
+                                " with type: `", ety->name(), "` does not match ",
                                 "formal parameter type: `", formal_type->name(),
                                 "` in method with id: `", method->id,
                                 "` in message send expression");

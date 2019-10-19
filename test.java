@@ -99,6 +99,12 @@ class C {
         return a.test(b, e);
     }
 
+    public int[] test_msg_send_correct2(A a, int b, int[] e) {
+        C c;
+        int d;
+        return a.test60(d, e, c);
+    }
+
     public int test_msg_send_wrong(A a, int b) {
         // Doesn't match the formal parameters, which are 2,
         // because the boolean without id is ignored
@@ -174,6 +180,12 @@ class A {
     }
 }
 
-class B {
+class B extends E {
     C foo;
+}
+
+class E {
+    public int[] test60(int a, int[] b, C c) {
+        return b;
+    }
 }
