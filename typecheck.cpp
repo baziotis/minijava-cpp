@@ -339,13 +339,15 @@ static Type *lookup_id(const char *id, Method *method, IdType *cls) {
     if (local) {
         return local->type;
     }
-    // Check parent's fields.
-    while (cls->parent) {
-        cls = cls->parent;
-        local = cls->fields.find(id);
+    // Check parent's fields (account for cyclic inheritance).
+    IdType *runner = cls;
+    while (runner->parent) {
+        runner = cls->parent;
+        local = runner->fields.find(id);
         if (local) {
             return local->type;
         }
+        if (runner == cls) break;
     }
     return NULL;
 }
@@ -356,13 +358,15 @@ static Method *lookup_method(const char *id, IdType *cls) {
     if (method) {
         return method;
     }
-    // Check parent's methods.
-    while (cls->parent) {
-        cls = cls->parent;
-        method = cls->methods.find(id);
+    // Check parent's methods (account for cyclic inheritance).
+    IdType *runner = cls;
+    while (runner->parent) {
+        runner= runner->parent;
+        method = runner->methods.find(id);
         if (method) {
             return method;
         }
+        if (runner == cls) break;
     }
     return NULL;
 }
