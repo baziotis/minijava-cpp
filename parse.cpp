@@ -105,7 +105,7 @@ static bool is_op(TOK kind) {
 }
     
 /// Skip tokens until you find one whose `category` is in `set`
-static void skip_tokens(TOK kind) {
+static void skip_tokens(TOK kind, bool eat = true) {
     int num_errors = 0;
     constexpr int lim = 5;
     TOK last;
@@ -123,7 +123,9 @@ static void skip_tokens(TOK kind) {
         last = token.kind;
         next_token();
     }
-    next_token();
+    if (eat) {
+        next_token();
+    }
     if (num_errors >= lim) {
         log(" ... `", last, "`");
     }
@@ -571,6 +573,7 @@ static LocalDeclaration *parse_local() {
         typespec_print(local->typespec);
         printf("`");
         log(", found `", token, "`\n");
+        next_token();
         goto Lerror;
     }
     return local;
@@ -697,7 +700,9 @@ static MethodDeclaration *parse_method() {
     // Parse VarDeclarations
     while (starts_local()) {
         parse_local_and_push(&method_decl->vars);
-        expect_token_in_rule(TOK::SEMI, "var declaration");
+        if (!expect_token_in_rule(TOK::SEMI, "var declaration")) {
+            skip_tokens(TOK::SEMI);
+        }
     }
     while (starts_statement(token.kind)) {
         parse_stmt_and_push(&method_decl->stmts);
@@ -750,6 +755,7 @@ static TypeDeclaration *parse_type_declaration() {
     }
     id = token.id;
     if (!expect_token_in_rule(TOK::ID, "class declaration")) {
+        skip_tokens(TOK::CLASS, false);
         goto Lerror;
     }
     cls->id = id;

@@ -1,0 +1,5 @@
+ERROR_keyword_as_id.java: 6:  Syntax Error: Expected `Identifier` in: class declaration, found `boolean`
+;  skipping `boolean`, `{`, `int`, `Identifier a` ... `}`
+ERROR_keyword_as_id.java: 11:  Syntax Error: Expected Identifier after type specifier `int[]`, found `int`
+ERROR_keyword_as_id.java: 15:  Syntax Error: Expected `Identifier` in: method declaration, found `boolean`
+ERROR_keyword_as_id.java: 15:  Syntax Error: Expected `}` in class declaration with name: B

@@ -286,6 +286,19 @@ void MainTypeCheckVisitor::visit(IdType *type) {
     assert(type->is_IdType());
     debug_print("MainTypeCheck::IdType %s\n", type->id);
 
+    // Cyclic inheritance detection
+    IdType *temp = type;
+    while (temp->parent) {
+        temp = temp->parent;
+        if (temp == type) {
+            // TODO: We don't have actual `loc` available.
+            location_t loc = { 0 };
+            typecheck_error(loc, "Cyclic inheritance ",
+                            "involving `", type->id, "`");
+            break;
+        }
+    }
+
     this->curr_class = type;
     for (Method *method : type->methods) {
         method->accept(this);
