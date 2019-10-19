@@ -34,8 +34,9 @@ Goal parse_and_return_goal() {
     // of destructor.
 }
 
-int main() {
-    filename = "test.java";
+int main(int argc, char **argv) {
+    assert(argc == 2);
+    filename = argv[1];
 
     Goal goal = parse_and_return_goal();
 
