@@ -46,7 +46,7 @@ int main()
             struct stat st;
             stat("curr_diff", &st);
             if (st.st_size != 0) {
-                printf("ERROR in %s\n", entry->d_name);
+                printf("MISMATCH in %s\n", entry->d_name);
                 break;
             } else {
                 system("rm curr_diff");

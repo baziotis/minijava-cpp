@@ -182,11 +182,24 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
         type->set_parent(parent);
     }
     for (LocalDeclaration *ld : type_decl->vars) {
-        // Check redeclaration
+        // Check redefinition in fields.
+        // IMPORTANT:
+        // - A field must not conflict with a field of the current class.
+        // - A field can conflict with a field of the parent class and
+        //   this is called shadowing. And it's correct (when we refer
+        //   to the field, we refer to the most immediate in the
+        //   inheritance tree).
+        // - A field can't possibly conflict with a method
+        //   of the current class because first we define all the fields,
+        //   then all the methods (so, only a method can conflict with a field).
+        // - A field can conflict with a method of a parent class, but that's
+        //   NOT an error. Because it is disambiguated in what we refer to
+        //   by the way we dereference.
+
         Field *field = type->fields.find(ld->id);
         if (field) {
             typecheck_error(ld->loc, "In class with id: `", type_decl->id,
-                            "`, redeclaration of field with id: `", field->id, "`");
+                            "`, redefinition of field with id: `", field->id, "`");
         } else {
             field = ld->accept(this);
             //field->type->print();
@@ -194,15 +207,41 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
         }
     }
     for (MethodDeclaration *md : type_decl->methods) {
-        // Check redeclaration
+        // Check redefinition
+        // IMPORTANT:
+        // - A method must not conflict with a method of the current class.
+        // - A method must not conflict with a field of the current class.
+        // - A method can conflict with a method of the parent class:
+        //   -- If the methods have the same return type (but possibly different formal
+        //      parameters), it's valid overriding.Otherwise,
+        //   -- Otherwise, if the methods have different return types but the types
+        //      of the parameters don't match _exactly_, then it's valid
+        //      overriding.
+        //   -- Otherwise, it's an error.
+        //   We CAN'T check this in the first pass as it is possible that
+        //   we have not processed the parent type yet.
+        // - A method can conflict with a field of the parent 
+        //   but that's NOT an error.  Because it is disambiguated in what
+        //   we refer to by the way we dereference.
+
         Method *method = type->methods.find(md->id);
         if (method) {
             typecheck_error(md->loc, "In class with id: `", type_decl->id,
-                            "`, redeclaration of method with id: `", method->id, "`");
+                            "`, redefinition of method with id: `", method->id,
+                            "`. Note that you can override but not overload ",
+                            "a method");
         } else {
-            method = md->accept(this);
-            //method->print();
-            type->methods.insert(method->id, method);
+            Field *field = type->fields.find(md->id);
+            if (field) {
+                typecheck_error(md->loc, "In class with id: `", type_decl->id,
+                                "`, redefinition of method with id: `",
+                                md->id, "`. A field with the same id ",
+                                "has already been defined");
+            } else {
+                method = md->accept(this);
+                //method->print();
+                type->methods.insert(method->id, method);
+            }
         }
     }
 }
@@ -281,6 +320,42 @@ void MainTypeCheckVisitor::visit(MainClass *main_class) {
     //debug_print("MainTypeCheck::MainClass\n");
 }
 
+static Method *lookup_method_parent(const char *id, IdType *cls, IdType **ret_parent = NULL) {
+    IdType *runner = cls;
+    while (runner->parent) {
+        runner = runner->parent;
+        Method *method = runner->methods.find(id);
+        if (method) {
+            *ret_parent = runner;
+            return method;
+        }
+        // Cyclic inheritance, we issue error elsewhere.
+        if (runner == cls) break;
+    }
+    return NULL;
+}
+
+static Method *lookup_method(const char *id, IdType *cls) {
+    // Check current class's methods
+    Method *method = cls->methods.find(id);
+    if (method) {
+        return method;
+    }
+    // Check parent's methods (account for cyclic inheritance).
+    return lookup_method_parent(id, cls);
+}
+
+static bool params_match(Method *m1, Method *m2) {
+    if (m1->param_len != m2->param_len) return false;
+    size_t it = 0;
+    for (Local *p1 : m1->locals) {
+        Local *p2 = m2->locals[it];
+        if (p1->type != p2->type) return false;
+        if (it == m1->param_len) break;
+    }
+    return true;
+}
+
 void MainTypeCheckVisitor::visit(IdType *type) {
     LOG_SCOPE;
     assert(type->is_IdType());
@@ -301,6 +376,20 @@ void MainTypeCheckVisitor::visit(IdType *type) {
 
     this->curr_class = type;
     for (Method *method : type->methods) {
+        IdType *parent;
+        Method *method_parent = lookup_method_parent(method->id, type, &parent);
+        if (method_parent && method_parent->ret_type != method->ret_type) {
+            bool match = params_match(method, method_parent);
+            // Note: If they _match exactly_ it is an error. Otherwise,
+            // it can be disambiguated through the parameters.
+            if (params_match) {
+                // TODO: We don't have actual `loc` available.
+                // TODO: Print the parameters of each.
+                typecheck_error(loc, "Method `", method->id, "` in class: `",
+                                type->id, "` can't override the method with the ",
+                                "same id in parent class: `", parent->id, "`");
+            }
+        }
         method->accept(this);
     }
     this->curr_class = NULL;
@@ -316,9 +405,15 @@ void MainTypeCheckVisitor::visit(Method *method) {
     // An undefined return expression may actually end up here.
     // Check parse.cpp
     if (!method->ret_expr->is_undefined()) {
+        assert(method->ret_expr);
         Type *ret_type = method->ret_expr->accept(this);
         assert(ret_type);
+        assert(method->ret_type);
         if (ret_type != method->ret_type) {
+            location_t loc_here = method->ret_expr->loc;
+            const char *name = ret_type->name();
+            const char *name2 = method->ret_type->name();
+            const char *id = method->id;
             typecheck_error(method->ret_expr->loc, "The type: `", ret_type->name(),
                             "` of the return expression does not match the ",
                             "return type: `", method->ret_type->name(),
@@ -347,25 +442,7 @@ static Type *lookup_id(const char *id, Method *method, IdType *cls) {
         if (local) {
             return local->type;
         }
-        if (runner == cls) break;
-    }
-    return NULL;
-}
-
-static Method *lookup_method(const char *id, IdType *cls) {
-    // Check current class's methods
-    Method *method = cls->methods.find(id);
-    if (method) {
-        return method;
-    }
-    // Check parent's methods (account for cyclic inheritance).
-    IdType *runner = cls;
-    while (runner->parent) {
-        runner= runner->parent;
-        method = runner->methods.find(id);
-        if (method) {
-            return method;
-        }
+        // Cyclic inheritance, we issue error elsewhere.
         if (runner == cls) break;
     }
     return NULL;
@@ -404,6 +481,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
                             expr->id, "` does is not defined.");
             return this->type_table.undefined_type;
         }
+        type->print();
         return type;
     } break;
     case EXPR::INT_LIT:
@@ -779,7 +857,8 @@ void Type::print() const {
 
 Method::Method(MethodDeclaration *method_decl) {
     id = method_decl->id;
-    locals.reserve(method_decl->params.len + method_decl->vars.len);
+    size_t locals_size = method_decl->params.len + method_decl->vars.len;
+    locals.reserve(locals_size);
     param_len = method_decl->params.len;
     stmts = method_decl->stmts;
     ret_expr = method_decl->ret;

@@ -1,0 +1,1 @@
+ERROR_overriding.java: 22:  Semantic Error: Method `overriden` in class: `A` can't override the method with the same id in parent class: `B`

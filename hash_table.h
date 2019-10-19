@@ -36,11 +36,17 @@ struct __HashTable
     //__HashTable &operator=(__HashTable<T, mem> &&rhs) = delete;
 
     inline void reserve(size_t nelements) {
-        nbuckets = nelements / 0.7;
-        ids = (const char **) allocate_zero(nbuckets * sizeof(const char *), mem);
-        data = (T *) allocate_zero(nbuckets * sizeof(T), mem);
-        for (size_t i = 0; i != nbuckets; ++i) {
-            ids[i] = nullptr;
+        if (nelements) {
+            nbuckets = nelements / 0.7;
+            ids = (const char **) allocate_zero(nbuckets * sizeof(const char *), mem);
+            data = (T *) allocate_zero(nbuckets * sizeof(T), mem);
+            for (size_t i = 0; i != nbuckets; ++i) {
+                ids[i] = nullptr;
+            }
+        } else {
+            nbuckets = 0;
+            ids = NULL;
+            data = NULL;
         }
     }
 
@@ -61,6 +67,7 @@ public:
 
     inline void insert(const char *key, T value) {
         assert(key);
+        assert(nbuckets);
         size_t bucket = this->hash(key);
         size_t i = bucket;
         bool wrapped = false;
@@ -83,6 +90,7 @@ public:
     }
 
     inline T find(const char *key) {
+        if (!nbuckets) return NULL;
         assert(key);
         size_t bucket = this->hash(key);
         size_t i = bucket;

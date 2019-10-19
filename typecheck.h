@@ -171,6 +171,7 @@ struct Type : public TypeCheckCustomAllocation {
         case TY::INT: return "int";
         case TY::ARR: return "int[]";
         case TY::BOOL: return "boolean";
+        default: assert(0);
         }
     }
 };
@@ -190,10 +191,10 @@ using Var = Local;
 using Field = Local;
 using Param = Local;
 
-class MethodDeclaration;
-class LocalDeclaration;
-class Statement;
-class Expression;
+struct MethodDeclaration;
+struct LocalDeclaration;
+struct Statement;
+struct Expression;
 
 struct Method : public TypeCheckCustomAllocation {
     const char *id;
