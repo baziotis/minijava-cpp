@@ -461,7 +461,6 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         }
         return this->type_table.undefined_type;
     } break;
-
     case EXPR::PLUS:
     case EXPR::MINUS:
     case EXPR::TIMES:
@@ -496,9 +495,29 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         }
         return this->type_table.undefined_type;
     } break;
-    
-    case EXPR::UNDEFINED:
+    case EXPR::ARR_LOOK:
     {
+        assert(be->e1);
+        assert(be->e2);
+        assert(be->e1->kind != EXPR::NOT);
+        assert(be->e2->kind != EXPR::NOT);
+        Type *ty1 = be->e1->accept(this);
+        Type *ty2 = be->e2->accept(this);
+        bool is_correct = true;
+
+        if (ty1 != this->type_table.int_arr_type) {
+            typecheck_error(expr->loc, "Bad left operand for index operator `[]`. ",
+                            "Operand of int array type was expected");
+            is_correct = false;
+        }
+        if (ty2 != this->type_table.int_type) {
+            typecheck_error(expr->loc, "Bad index expression for index operator `[]`. ",
+                            "Operand of int type was expected");
+            is_correct = false;
+        }
+        if (is_correct) {
+            return this->type_table.int_type;
+        }
         return this->type_table.undefined_type;
     } break;
     default: assert(0); return this->type_table.undefined_type;

@@ -41,7 +41,7 @@ enum class EXPR {
     PLUS,  // Done
     MINUS,  // Done
     TIMES, // Done
-    ARR_LOOK,
+    ARR_LOOK,  // Done
     ARR_LEN, // Done
     MSG_SEND,
     NOT, // Done

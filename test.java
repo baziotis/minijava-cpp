@@ -82,6 +82,18 @@ class C {
     public int test_times_wrong(boolean a, int b) {
         return a * b;
     }
+
+    public int test_arr_look_correct(int[] a, int b) {
+        return a[b];
+    }
+
+    public int test_arr_look_wrong(int[] a, int[] b) {
+        return a[b];
+    }
+
+    public int test_arr_look_wrong2(int a, int b) {
+        return a[b];
+    }
 }
 
 class D {
