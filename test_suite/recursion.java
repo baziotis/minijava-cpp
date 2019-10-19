@@ -9,4 +9,8 @@ class A {
     public int test(int[] b, int c) {
         return this.test(b, b[c]);
     }
+
+    public int test2(int a, int b) {
+        return new A().test2(a - 1, b + a);
+    }
 }
