@@ -162,7 +162,6 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
         if (type->is_defined()) {
             typecheck_error(type_decl->loc, "Type with id: `", type_decl->id,
                             "` has already been declared");
-            // TODO: Make undefined and return.
             return;
         } else {
             type->set_sizes(type_decl->vars.len, type_decl->methods.len);
@@ -183,7 +182,6 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
         if (field) {
             typecheck_error(ld->loc, "In class with id: `", type_decl->id,
                             "`, redeclaration of field with id: `", field->id, "`");
-            // TODO: Make undefined (the whole type) and return.
         } else {
             field = ld->accept(this);
             //field->type->print();
@@ -196,7 +194,6 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
         if (method) {
             typecheck_error(md->loc, "In class with id: `", type_decl->id,
                             "`, redeclaration of method with id: `", method->id, "`");
-            // TODO: Make undefined (the whole type) and return.
         } else {
             method = md->accept(this);
             //method->print();
@@ -295,13 +292,43 @@ void MainTypeCheckVisitor::visit(Method *method) {
     LOG_SCOPE;
     debug_print("MainTypeCheck::Method %s\n", method->id);
     this->curr_method = method;
+    for (Statement *stmt : method->stmts) {
+        stmt->accept(this);
+    }
     // An undefined return expression may actually end up here.
     // Check parse.cpp
     if (!method->ret_expr->is_undefined()) {
         Type *ret_type = method->ret_expr->accept(this);
-        ret_type->print();
+        assert(ret_type);
+        if (ret_type != method->ret_type) {
+            typecheck_error(method->ret_expr->loc, "The type of the return expression ",
+                            "does not match the return type of method: `",
+                            method->id, "`");
+        }
     }
     this->curr_method = NULL;
+}
+
+static Type *lookup_id(const char *id, Method *method, IdType *cls) {
+    // Check current method's locals (vars and params).
+    Local *local = method->locals.find(id);
+    if (local) {
+        return local->type;
+    }
+    // Check current class's fields.
+    local = cls->fields.find(id);
+    if (local) {
+        return local->type;
+    }
+    // Check parent's fields.
+    while (cls->parent) {
+        cls = cls->parent;
+        local = cls->fields.find(id);
+        if (local) {
+            return local->type;
+        }
+    }
+    return NULL;
 }
 
 // IMPORTANT: DO NOT check if a type is undefined with equality test with
@@ -316,7 +343,6 @@ void MainTypeCheckVisitor::visit(Method *method) {
 Type* MainTypeCheckVisitor::visit(Expression *expr) {
     LOG_SCOPE;
     assert(!expr->is_undefined());
-    debug_print("MainTypeCheck::Expression\n");
     
     // Used in binary expression cases.
     BinaryExpression *be = (BinaryExpression *) expr;
@@ -324,45 +350,34 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     switch (expr->kind) {
     case EXPR::BOOL_LIT:
     {
+        debug_print("MainTypeCheck::BoolExpression\n");
         return this->type_table.bool_type;
     } break;
     case EXPR::ID:
     {
-        // Check current method's locals (vars and params).
-        Method *method = this->curr_method;
-        Local *local = method->locals.find(expr->id);
-        if (local) {
-            return local->type;
+        debug_print("MainTypeCheck::IdExpression: %s\n", expr->id);
+        assert(this->curr_method);
+        assert(this->curr_class);
+        Type *type = lookup_id(expr->id, this->curr_method, this->curr_class);
+        if (!type) {
+            return this->type_table.undefined_type;
         }
-        // Check current class's fields.
-        // TODO: Encapsulate the lookup of the field in a class
-        // and its parents?
-        IdType *cls = this->curr_class;
-        local = cls->fields.find(expr->id);
-        if (local) {
-            return local->type;
-        }
-        // Check parent's fields.
-        while (cls->parent) {
-            cls = cls->parent;
-            local = cls->fields.find(expr->id);
-            if (local) {
-                return local->type;
-            }
-        }
-        return this->type_table.undefined_type;
+        return type;
     } break;
     case EXPR::INT_LIT:
     {
+        debug_print("MainTypeCheck::IntegerExpression\n");
         return this->type_table.int_type;
     } break;
     case EXPR::THIS:
     {
+        debug_print("MainTypeCheck::ThisExpression\n");
         assert(this->curr_class);
         return this->curr_class;
     } break;
     case EXPR::ALLOC:
     {
+        debug_print("MainTypeCheck::AllocationExpression\n");
         // Find the type of the Identifier.
         IdType *type = this->type_table.find(expr->id);
         if (!type || type->kind == TY::UNDEFINED) {
@@ -379,6 +394,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     } break;
     case EXPR::ARR_ALLOC:
     {
+        debug_print("MainTypeCheck::ArrayAllocationExpression\n");
         assert(expr->e1);
         Type *index_type = expr->e1->accept(this);
         index_type->print();
@@ -391,6 +407,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     } break;
     case EXPR::ARR_LEN:
     {
+        debug_print("MainTypeCheck::LengthExpression\n");
         assert(expr->e1);
         Type *arr = expr->e1->accept(this);
         if (arr != this->type_table.int_arr_type) {
@@ -402,12 +419,12 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     } break;
     case EXPR::NOT:
     {
+        debug_print("MainTypeCheck::NotExpression\n");
         assert(expr->e1);
         Type *ty = expr->e1->accept(this);
         if (ty != this->type_table.bool_type) {
             typecheck_error(expr->loc, "Bad operand for unary operator `!`. Operand ",
-                            "of boolean type was expected");
-            // TODO: Found what? It requires some changes to the log in error.cpp
+                            "of boolean type was expected, found: `", ty->name(), "`");
             return this->type_table.undefined_type;
         }
         return this->type_table.bool_type;
@@ -417,6 +434,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
 
     case EXPR::AND:
     {
+        debug_print("MainTypeCheck::AndExpression\n");
         assert(be->e1);
         assert(be->e2);
         Type *ty1 = be->e1->accept(this);
@@ -425,12 +443,12 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
 
         if (ty1 != this->type_table.bool_type) {
             typecheck_error(expr->loc, "Bad left operand for binary operator `&&`. Operand ",
-                            "of boolean type was expected");
+                            "of boolean type was expected, found: `", ty1->name(), "`");
             is_correct = false;
         }
         if (ty2 != this->type_table.bool_type) {
             typecheck_error(expr->loc, "Bad right operand for binary operator `&&`. Operand ",
-                            "of boolean type was expected");
+                            "of boolean type was expected, found: `", ty2->name(), "`");
             is_correct = false;
         }
         if (is_correct) {
@@ -446,6 +464,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
 
     case EXPR::CMP:
     {
+        debug_print("MainTypeCheck::CmpExpression\n");
         assert(be->e1);
         assert(be->e2);
         assert(be->e1->kind != EXPR::NOT);
@@ -456,12 +475,12 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
 
         if (ty1 != this->type_table.int_type) {
             typecheck_error(expr->loc, "Bad left operand for binary operator `<`. Operand ",
-                            "of int type was expected");
+                            "of int type was expected, found: `", ty2->name(), "`");
             is_correct = false;
         }
         if (ty2 != this->type_table.int_type) {
             typecheck_error(expr->loc, "Bad right operand for binary operator `<`. Operand ",
-                            "of int type was expected");
+                            "of int type was expected, found: `", ty2->name(), "`");
             is_correct = false;
         }
         if (is_correct) {
@@ -480,22 +499,29 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         Type *ty1 = be->e1->accept(this);
         Type *ty2 = be->e2->accept(this);
         bool is_correct = true;
-        int op = '+';
 
-        if (be->kind == EXPR::MINUS) {
-            op = '-';
-        } else if (be->kind == EXPR::TIMES) {
-            op = '*';
+        int op;
+        if (be->kind == EXPR::PLUS) {
+            int op = '+';
+            debug_print("MainTypeCheck::PlusExpression\n");
+        } else if (be->kind == EXPR::MINUS) {
+            int op = '-';
+            debug_print("MainTypeCheck::MinusExpression\n");
+        } else {
+            int op = '*';
+            debug_print("MainTypeCheck::TimesExpression\n");
         }
 
         if (ty1 != this->type_table.int_type) {
             typecheck_error(expr->loc, "Bad left operand for binary operator `", (char)op ,
-                            "`. Operand of int type was expected");
+                            "`. Operand of int type was expected, found: `",
+                            ty1->name(), "`");
             is_correct = false;
         }
         if (ty2 != this->type_table.int_type) {
             typecheck_error(expr->loc, "Bad right operand for binary operator `", (char)op ,
-                            "`. Operand of int type was expected");
+                            "`. Operand of int type was expected, found: `",
+                            ty1->name(), "`");
             is_correct = false;
         }
         if (is_correct) {
@@ -505,6 +531,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     } break;
     case EXPR::ARR_LOOK:
     {
+        debug_print("MainTypeCheck::ArrayLookupExpression\n");
         assert(be->e1);
         assert(be->e2);
         assert(be->e1->kind != EXPR::NOT);
@@ -515,12 +542,14 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
 
         if (ty1 != this->type_table.int_arr_type) {
             typecheck_error(expr->loc, "Bad left operand for index operator `[]`. ",
-                            "Operand of int array type was expected");
+                            "Operand of int array type was expected, found: ",
+                            ty1->name(), "`");
             is_correct = false;
         }
         if (ty2 != this->type_table.int_type) {
             typecheck_error(expr->loc, "Bad index expression for index operator `[]`. ",
-                            "Operand of int type was expected");
+                            "Operand of int type was expected, found: `",
+                            ty1->name(), "`");
             is_correct = false;
         }
         if (is_correct) {
@@ -530,6 +559,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     } break;
     case EXPR::MSG_SEND:
     {
+        debug_print("MainTypeCheck::MessageSendExpression\n");
         assert(be->e1);
         assert(be->e1->kind != EXPR::NOT);
         IdType *type = (IdType*) be->e1->accept(this);
@@ -543,7 +573,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         if (!type->is_IdType()) {
             typecheck_error(expr->loc, "Bad dereferenced operand for message",
                             "send operator `.`. ", "Operand of user-defined ",
-                            "type was expected");
+                            "type was expected, found: `", type->name(), "`");
             return this->type_table.undefined_type;
         }
 
@@ -560,17 +590,20 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
                                 be->msd->expr_list.len, ") does not match the ",
                                 "number of formal parameters (", method->param_len,
                                 ") of method with id: `", method->id, "`");
-            return this->type_table.undefined_type;
+            return method->ret_type;
         }
         
         size_t formal_param_counter = 0;
         for (Expression *e : be->msd->expr_list) {
             Type *ety = e->accept(this);
-            if (ety != method->locals[formal_param_counter]->type) {
+            Type *formal_type = method->locals[formal_param_counter]->type;
+            if (ety != formal_type) {
                 typecheck_error(expr->loc, "Argument no. ", formal_param_counter + 1,
-                                " does not match formal parameter type in method ",
-                                "with id: `", method->id, "` in message send expression");
-                return this->type_table.undefined_type;
+                                " with type: `", ety->name(), "does not match ",
+                                "formal parameter type: `", formal_type->name(),
+                                "` in method with id: `", method->id,
+                                "` in message send expression");
+                return method->ret_type;
             }
             ++formal_param_counter;
         }
@@ -579,6 +612,97 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     } break;
     default: assert(0); return this->type_table.undefined_type;
     }
+}
+
+/* Statements
+ */
+// TODO: Global error counting to known whether there was error in statement.
+void MainTypeCheckVisitor::visit(BlockStatement *block_stmt) {
+    LOG_SCOPE;
+    debug_print("MainTypeCheck::BlockStatement\n");
+    for (Statement *stmt : block_stmt->block) {
+        stmt->accept(this);
+    }
+}
+
+void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
+    LOG_SCOPE;
+    debug_print("MainTypeCheck::AssignmentStatement\n");
+    assert(this->curr_method);
+    assert(this->curr_class);
+    Type *lhs = lookup_id(asgn_stmt->id, this->curr_method, this->curr_class);
+    if (!lhs) {
+        // Of course, with variable we mean also parameter and field.
+        typecheck_error(asgn_stmt->loc, "In assignment statement, variable: `",
+                        asgn_stmt->id, "` is not defined");
+    }
+    assert(asgn_stmt->rhs);
+    Type *rhs = asgn_stmt->rhs->accept(this);
+    if (lhs != rhs) {
+        typecheck_error(asgn_stmt->loc, "In assignment statemet, ",
+                        "the left-hand-side type: `", lhs->name(),
+                        "` does not match that of the right-hand-side: `",
+                        rhs->name(), "`");
+    }
+}
+
+void MainTypeCheckVisitor::visit(ArrayAssignmentStatement *arr_asgn_stmt) {
+    LOG_SCOPE;
+    debug_print("MainTypeCheck::ArrayAssignmentStatement\n");
+    assert(this->curr_method);
+    assert(this->curr_class);
+    Type *arr = lookup_id(arr_asgn_stmt->id, this->curr_method, this->curr_class);
+    if (!arr) {
+        typecheck_error(arr_asgn_stmt->loc, "In array assignment statement, array: `",
+                        arr_asgn_stmt->id, "` is not defined");
+    }
+    assert(arr_asgn_stmt->index);
+    Type *index = arr_asgn_stmt->index->accept(this);
+    if (index != this->type_table.int_type) {
+        typecheck_error(arr_asgn_stmt->loc, "In array assignment statement, the ",
+                        "index expression must have `int` type but has: `",
+                        index->name(), "`");
+    }
+    assert(arr_asgn_stmt->rhs);
+    Type *rhs = arr_asgn_stmt->rhs->accept(this);
+    if (rhs != this->type_table.int_type) {
+        typecheck_error(arr_asgn_stmt->loc, "In array assignment statement, the ",
+                        "right-hand-side expression must have `int` type but has: `",
+                        rhs->name(), "`");
+    }
+}
+
+void MainTypeCheckVisitor::visit(IfStatement *if_stmt) {
+    LOG_SCOPE;
+    debug_print("MainTypeCheck::IfStatement\n");
+    Type *cond = if_stmt->cond->accept(this);
+    if (cond != this->type_table.bool_type) {
+        typecheck_error(if_stmt->loc, "In if statement, the ",
+                        "condition expression must have `boolean` type but has: `",
+                        cond->name(), "`");
+    }
+    assert(if_stmt->then);
+    assert(if_stmt->else_);
+    if_stmt->then->accept(this);
+    if_stmt->else_->accept(this);
+}
+
+void MainTypeCheckVisitor::visit(WhileStatement *while_stmt) {
+    LOG_SCOPE;
+    debug_print("MainTypeCheck::WhileStatement\n");
+    Type *cond = while_stmt->cond->accept(this);
+    if (cond != this->type_table.bool_type) {
+        typecheck_error(while_stmt->loc, "In while statement, the ",
+                        "condition expression must have `boolean` type but has: `",
+                        cond->name(), "`");
+    }
+    assert(while_stmt->body);
+    while_stmt->body->accept(this);
+}
+
+void MainTypeCheckVisitor::visit(PrintStatement *print_stmt) {
+    LOG_SCOPE;
+    debug_print("MainTypeCheck::PrintStatement\n");
 }
 
 /* Types

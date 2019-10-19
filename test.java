@@ -105,6 +105,60 @@ class C {
         // (check test() in class A)
         return a.test(b);
     }
+
+    public int test_asgn_stmt_correct(int a, int b) {
+        a = b;
+        return b;
+    }
+
+    public int test_asgn_stmt_wrong(A a, int b) {
+        a = b;
+        return b;
+    }
+
+    public int[] test_arr_asgn_stmt_correct(int[] a, int b) {
+        a[1] = b;
+        return a;
+    }
+
+    public int[] test_arr_asgn_stmt_wrong(int[] a, int b) {
+        a[true] = b;  // index should be int
+        return a;
+    }
+
+    public int[] test_arr_asgn_stmt_wrong2(int[] a, int b, C c) {
+        a[b] = c;  // rhs should be int
+        return a;
+    }
+
+
+    public int test_if_stmt_correct(int a, int b) {
+        if (a < b) {
+            a = 2;
+        } else {}
+        return b;
+    }
+
+    public int test_if_stmt_wrong(boolean a, int b) {
+        if (a < b) {
+            a = 2;
+        } else {}
+        return b;
+    }
+
+    public int test_while_stmt_correct(int a, int b) {
+        while (a < b) {
+            a = 2;
+        }
+        return b;
+    }
+
+    public int test_while_stmt_wrong(boolean a, int b) {
+        while(a < b) {
+            a = 2;
+        }
+        return b;
+    }
 }
 
 class D {

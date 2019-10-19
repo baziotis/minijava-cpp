@@ -76,6 +76,12 @@ struct MethodDeclaration;
 struct Typespec;
 struct Expression;
 struct BinaryExpression;
+struct BlockStatement;
+struct AssignmentStatement;
+struct ArrayAssignmentStatement;
+struct IfStatement;
+struct WhileStatement;
+struct PrintStatement;
 
 struct Local;
 struct Method;
@@ -111,6 +117,14 @@ struct MainTypeCheckVisitor {
     void    visit(Method *method);
 
     Type*   visit(Expression *expr);
+
+    // Statements
+    void    visit(BlockStatement *block_stmt);
+    void    visit(AssignmentStatement *asgn_stmt);
+    void    visit(ArrayAssignmentStatement *arr_asgn_stmt);
+    void    visit(IfStatement *if_stmt);
+    void    visit(WhileStatement *while_stmt);
+    void    visit(PrintStatement *print_stmt);
 };
 
 /* Types
@@ -150,6 +164,15 @@ struct Type : public TypeCheckCustomAllocation {
     virtual IdType *is_IdType() { return NULL; };
 
     virtual void print() const;
+
+    virtual const char *name() const {
+        switch (kind) {
+        case TY::UNDEFINED: return "Undefined Type (Error)";
+        case TY::INT: return "int";
+        case TY::ARR: return "int[]";
+        case TY::BOOL: return "boolean";
+        }
+    }
 };
 
 // TODO: Check if `id` fields are actually ever used for Locals
@@ -220,6 +243,10 @@ struct IdType : public Type {
     }
 
     void print() const override;
+
+    const char *name() const override {
+        return this->id;
+    }
 
     IdType *is_IdType() override { return this; };
 

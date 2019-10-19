@@ -36,21 +36,21 @@ struct ParsingTemporaryAllocation {
 enum class EXPR {
     __FIRST,
     UNDEFINED = __FIRST,
-    AND,  // Done
-    CMP,  // Done
-    PLUS,  // Done
-    MINUS,  // Done
-    TIMES, // Done
-    ARR_LOOK,  // Done
-    ARR_LEN, // Done
+    AND,
+    CMP,
+    PLUS,
+    MINUS,
+    TIMES,
+    ARR_LOOK,
+    ARR_LEN,
     MSG_SEND,
-    NOT, // Done
-    ID,  // Done
-    INT_LIT,  // Done
-    BOOL_LIT,  // Done
-    THIS, // Done
-    ARR_ALLOC, // Done
-    ALLOC,  // Done
+    NOT,
+    ID,
+    INT_LIT,
+    BOOL_LIT,
+    THIS,
+    ARR_ALLOC,
+    ALLOC,
     __LAST = ALLOC,
 };
 
@@ -95,6 +95,8 @@ struct BinaryExpression : public Expression {
 
 /* Statements
  */
+// TODO: This is almost not used, so we might want to
+// get rid of it.
 enum struct STMT {
     UNDEFINED,
     BLOCK,
@@ -120,6 +122,10 @@ struct Statement : public ParsingPersistentAllocation {
     void accept(DeclarationVisitor *v) {
         assert(0);
     }
+
+    /* Type-checking - Pass 2
+     */
+    virtual void accept(MainTypeCheckVisitor *v) = 0;
 };
 
 struct UndefinedStatement : public Statement {
@@ -130,6 +136,12 @@ struct UndefinedStatement : public Statement {
     }
 
     void print() const override;
+
+    /* Type-checking - Pass 2
+     */
+    void accept(MainTypeCheckVisitor *v) override {
+        assert(0);
+    }
 };
 
 struct BlockStatement : public Statement {
@@ -142,6 +154,12 @@ struct BlockStatement : public Statement {
     }
 
     void print() const override;
+
+    /* Type-checking - Pass 2
+     */
+    void accept(MainTypeCheckVisitor *v) override {
+        v->visit(this);
+    }
 };
 
 struct AssignmentStatement : public Statement {
@@ -155,6 +173,12 @@ struct AssignmentStatement : public Statement {
     }
 
     void print() const override;
+
+    /* Type-checking - Pass 2
+     */
+    void accept(MainTypeCheckVisitor *v) override {
+        v->visit(this);
+    }
 };
 
 struct ArrayAssignmentStatement : public Statement {
@@ -170,6 +194,11 @@ struct ArrayAssignmentStatement : public Statement {
 
     void print() const override;
 
+    /* Type-checking - Pass 2
+     */
+    void accept(MainTypeCheckVisitor *v) override {
+        v->visit(this);
+    }
 };
 
 struct IfStatement : public Statement {
@@ -183,6 +212,12 @@ struct IfStatement : public Statement {
     }
 
     void print() const override;
+
+    /* Type-checking - Pass 2
+     */
+    void accept(MainTypeCheckVisitor *v) override {
+        v->visit(this);
+    }
 };
 
 struct WhileStatement : public Statement {
@@ -196,6 +231,12 @@ struct WhileStatement : public Statement {
     }
 
     void print() const override;
+
+    /* Type-checking - Pass 2
+     */
+    void accept(MainTypeCheckVisitor *v) override {
+        v->visit(this);
+    }
 };
 
 struct PrintStatement : public Statement {
@@ -209,6 +250,11 @@ struct PrintStatement : public Statement {
 
     void print() const override;
 
+    /* Type-checking - Pass 2
+     */
+    void accept(MainTypeCheckVisitor *v) override {
+        v->visit(this);
+    }
 };
 
 /* Types (specifiers)
