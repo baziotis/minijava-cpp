@@ -15,7 +15,7 @@ class A extends B {
     public int test(int c, int[] d, boolean) {
         int c;
         a = 3;
-        return 1;
+        return foo;  // <- this should be C, check class B
     }
 
     public int test(int c, int[] d, boolean) {
@@ -31,7 +31,7 @@ class C {
     
     public int test2(D d, int e) {
         int c;
-        return new int [34];
+        return new int [10];
     }
 
     public int test4(D d, int d) {
@@ -54,5 +54,5 @@ class A {
 }
 
 class B {
-    int foo;
+    C foo;
 }

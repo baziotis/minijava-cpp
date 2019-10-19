@@ -108,7 +108,6 @@ struct MainTypeCheckVisitor {
     void    visit(Method *method);
 
     Type*   visit(Expression *expr);
-    Type*   visit(BinaryExpression *bin_expr);
 };
 
 /* Types
@@ -150,6 +149,8 @@ struct Type : public TypeCheckCustomAllocation {
     virtual void print() const;
 };
 
+// TODO: Check if `id` fields are actually ever used for Locals
+// and Methods
 struct Local  : public TypeCheckCustomAllocation {
     const char *id;
     Type *type;

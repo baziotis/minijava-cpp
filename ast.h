@@ -78,7 +78,7 @@ struct Expression : public ParsingPersistentAllocation {
         assert(0);
     }
 
-    virtual Type* accept(MainTypeCheckVisitor *v) {
+    Type* accept(MainTypeCheckVisitor *v) {
         return v->visit(this);
     }
 };
@@ -90,10 +90,6 @@ struct BinaryExpression : public Expression {
         // for a not so usual type of Expression.
         MessageSendData *msd;
     };
-
-    Type* accept(MainTypeCheckVisitor *v) override {
-        return v->visit(this);
-    }
 };
 
 

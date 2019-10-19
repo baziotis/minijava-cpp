@@ -305,11 +305,34 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     assert(!expr->is_undefined());
     debug_print("MainTypeCheck::Expression\n");
     switch (expr->kind) {
-    case EXPR::BOOL_LIT: return this->type_table.bool_type;
+    case EXPR::BOOL_LIT:
+    {
+        return this->type_table.bool_type;
+    } break;
     case EXPR::ID:
     {
-        // TODO: Check locals of this method, then class and
-        // parent classes.
+        // Check current method's locals (vars and params).
+        Method *method = this->curr_method;
+        Local *local = method->locals.find(expr->id);
+        if (local) {
+            return local->type;
+        }
+        // Check current class's fields.
+        // TODO: Encapsulate the lookup of the field in a class
+        // and its parents?
+        IdType *cls = this->curr_class;
+        local = cls->fields.find(expr->id);
+        if (local) {
+            return local->type;
+        }
+        // Check parent's fields.
+        while (cls->parent) {
+            cls = cls->parent;
+            local = cls->fields.find(expr->id);
+            if (local) {
+                return local->type;
+            }
+        }
         return this->type_table.undefined_type;
     } break;
     case EXPR::INT_LIT:
@@ -344,12 +367,12 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     case EXPR::ARR_ALLOC:
     {
         Type *index_type = expr->e1->accept(this);
+        index_type->print();
         if (index_type != this->type_table.int_type) {
             typecheck_error(expr->loc, "In array allocation expression, ",
                             "the index expression must be of integer type.");
             return this->type_table.undefined_type;
         }
-        index_type->print();
         return this->type_table.int_arr_type;
     } break;
     case EXPR::UNDEFINED:
@@ -358,11 +381,6 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     } break;
     default: assert(0); return this->type_table.undefined_type;
     }
-}
-
-Type* MainTypeCheckVisitor::visit(BinaryExpression *bin_expr) {
-    LOG_SCOPE;
-    assert(!bin_expr->is_undefined());
 }
 
 /* Types
