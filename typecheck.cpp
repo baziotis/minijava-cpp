@@ -218,6 +218,14 @@ Local *DeclarationVisitor::visit(LocalDeclaration *local_decl) {
     return local;
 }
 
+const char *DeclarationVisitor::gen_id() {
+    static int count = 0;
+    char buf[64];
+    sprintf(buf, "a%d", count);
+    count++;
+    return str_intern(buf);
+}
+
 Method *DeclarationVisitor::visit(MethodDeclaration *method_decl) {
     // Note: It's responsibility of the one who calls this visit
     // to have assured that a method with the same id does not exist.
@@ -228,14 +236,19 @@ Method *DeclarationVisitor::visit(MethodDeclaration *method_decl) {
     Method *method = new Method(method_decl);
     method->ret_type = this->typespec_to_type(method_decl->typespec);
     for (LocalDeclaration *par : method_decl->params) {
+        // We accept the param anyway. But in the case that there is
+        // another param with the same name, we still insert this
+        // (so that the rest of type-checking can sort of continue) but
+        // we have to generate a (dummy) id for it.
+        Param *param = par->accept(this);
         if (method->locals.find(par->id)) {
             typecheck_error(par->loc, "Parameter `", par->id, "` is already defined",
                             " in method `", method_decl->id, "`");
+            param->id = gen_id();
         } else {
-            Param* param = par->accept(this);
             param->type->print();
-            method->locals.insert(param->id, param);
         }
+        method->locals.insert(param->id, param);
     }
     for (LocalDeclaration *var : method_decl->vars) {
         if (method->locals.find(var->id)) {
@@ -352,12 +365,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     {
         // Find the type of the Identifier.
         IdType *type = this->type_table.find(expr->id);
-        if (!type) {
-            typecheck_error(expr->loc, "In allocation expression, Identifier: `",
-                            expr->id, "` does not denote a known type");
-            return this->type_table.undefined_type;
-        }
-        if (type->kind == TY::UNDEFINED) {
+        if (!type || type->kind == TY::UNDEFINED) {
             typecheck_error(expr->loc, "In allocation expression, Identifier: `",
                             expr->id, "` does not denote a known type");
             return this->type_table.undefined_type;
@@ -520,6 +528,55 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         }
         return this->type_table.undefined_type;
     } break;
+    case EXPR::MSG_SEND:
+    {
+        assert(be->e1);
+        assert(be->e1->kind != EXPR::NOT);
+        IdType *type = (IdType*) be->e1->accept(this);
+        assert(type);
+
+        if (type->kind == TY::UNDEFINED) {
+            typecheck_error(expr->loc, "In message send expression, Identifier: `",
+                            expr->id, "` does not denote a known type");
+            return this->type_table.undefined_type;
+        }
+        if (!type->is_IdType()) {
+            typecheck_error(expr->loc, "Bad dereferenced operand for message",
+                            "send operator `.`. ", "Operand of user-defined ",
+                            "type was expected");
+            return this->type_table.undefined_type;
+        }
+
+        Method *method = type->methods.find(be->msd->id);
+
+        if (!method) {
+            typecheck_error(expr->loc, "Type with id: `", type->id, "` does not ",
+                            "have a method with id: `", be->msd->id, "`");
+            return this->type_table.undefined_type;
+        }
+
+        if (be->msd->expr_list.len != method->param_len) {
+            typecheck_error(expr->loc, "The no. of arguments (",
+                                be->msd->expr_list.len, ") does not match the ",
+                                "number of formal parameters (", method->param_len,
+                                ") of method with id: `", method->id, "`");
+            return this->type_table.undefined_type;
+        }
+        
+        size_t formal_param_counter = 0;
+        for (Expression *e : be->msd->expr_list) {
+            Type *ety = e->accept(this);
+            if (ety != method->locals[formal_param_counter]->type) {
+                typecheck_error(expr->loc, "Argument no. ", formal_param_counter + 1,
+                                " does not match formal parameter type in method ",
+                                "with id: `", method->id, "` in message send expression");
+                return this->type_table.undefined_type;
+            }
+            ++formal_param_counter;
+        }
+        assert(formal_param_counter == method->param_len);
+        return method->ret_type;
+    } break;
     default: assert(0); return this->type_table.undefined_type;
     }
 }
@@ -553,6 +610,7 @@ void Type::print() const {
 Method::Method(MethodDeclaration *method_decl) {
     id = method_decl->id;
     locals.reserve(method_decl->params.len + method_decl->vars.len);
+    param_len = method_decl->params.len;
     stmts = method_decl->stmts;
     ret_expr = method_decl->ret;
 }

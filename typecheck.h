@@ -35,6 +35,8 @@ struct SerializedHashTable {
 
     inline T* begin() { return this->serialized; }
     inline T* end() { return &this->serialized[len]; }
+
+    T& operator[](size_t i) { return serialized[i]; }
 };
 
 struct IdType;
@@ -89,6 +91,7 @@ struct DeclarationVisitor {
     Method* visit(MethodDeclaration *method_decl);
 
     // Helper functions
+    const char *gen_id();
     IdType *id_to_type(const char *id);
     Type *typespec_to_type(Typespec tspec);
 };
@@ -172,7 +175,9 @@ class Expression;
 struct Method : public TypeCheckCustomAllocation {
     const char *id;
     Type *ret_type;
-    HashTable<Local*> locals;
+    size_t param_len;  // To know where params
+    // end (and vars start).
+    SerializedHashTable<Local*> locals;
     
     // Copied from the MethodDeclaration
     Buf<Statement*> stmts;

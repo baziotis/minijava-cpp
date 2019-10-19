@@ -94,6 +94,17 @@ class C {
     public int test_arr_look_wrong2(int a, int b) {
         return a[b];
     }
+
+    public int test_msg_send_correct(A a, int b, int[] e) {
+        return a.test(b, e);
+    }
+
+    public int test_msg_send_wrong(A a, int b) {
+        // Doesn't match the formal parameters, which are 2,
+        // because the boolean without id is ignored
+        // (check test() in class A)
+        return a.test(b);
+    }
 }
 
 class D {

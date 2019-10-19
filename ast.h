@@ -55,7 +55,6 @@ enum class EXPR {
 };
 
 struct MessageSendData : public ParsingPersistentAllocation {
-    location_t loc;
     const char *id;
     Buf<Expression*> expr_list;
 };

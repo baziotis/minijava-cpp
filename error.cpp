@@ -17,6 +17,10 @@ static void log(int i) {
     printf("%d", i);
 }
 
+static void log(size_t s) {
+    printf("%zd", s);
+}
+
 static void log(char c) {
     printf("%c", c);
 }
