@@ -304,6 +304,10 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     LOG_SCOPE;
     assert(!expr->is_undefined());
     debug_print("MainTypeCheck::Expression\n");
+    
+    // Used in binary expression cases.
+    BinaryExpression *be = (BinaryExpression *) expr;
+
     switch (expr->kind) {
     case EXPR::BOOL_LIT:
     {
@@ -341,6 +345,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     } break;
     case EXPR::THIS:
     {
+        assert(this->curr_class);
         return this->curr_class;
     } break;
     case EXPR::ALLOC:
@@ -366,6 +371,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     } break;
     case EXPR::ARR_ALLOC:
     {
+        assert(expr->e1);
         Type *index_type = expr->e1->accept(this);
         index_type->print();
         if (index_type != this->type_table.int_type) {
@@ -377,6 +383,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     } break;
     case EXPR::ARR_LEN:
     {
+        assert(expr->e1);
         Type *arr = expr->e1->accept(this);
         if (arr != this->type_table.int_arr_type) {
             typecheck_error(expr->loc, "In array length expression, ",
@@ -387,6 +394,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     } break;
     case EXPR::NOT:
     {
+        assert(expr->e1);
         Type *ty = expr->e1->accept(this);
         if (ty != this->type_table.bool_type) {
             typecheck_error(expr->loc, "Bad operand for unary operator `!`. Operand ",
@@ -396,6 +404,99 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         }
         return this->type_table.bool_type;
     } break;
+
+/*----------- BINARY EXPRESSIONS ----------------*/
+
+    case EXPR::AND:
+    {
+        assert(be->e1);
+        assert(be->e2);
+        Type *ty1 = be->e1->accept(this);
+        Type *ty2 = be->e2->accept(this);
+        bool is_correct = true;
+
+        if (ty1 != this->type_table.bool_type) {
+            typecheck_error(expr->loc, "Bad left operand for binary operator `&&`. Operand ",
+                            "of boolean type was expected");
+            is_correct = false;
+        }
+        if (ty2 != this->type_table.bool_type) {
+            typecheck_error(expr->loc, "Bad right operand for binary operator `&&`. Operand ",
+                            "of boolean type was expected");
+            is_correct = false;
+        }
+        if (is_correct) {
+            return this->type_table.bool_type;
+        }
+        return this->type_table.undefined_type;
+    } break;
+
+
+    // If e1, e2 in the CMP, PLUS, MINUS, TIMES are NOT expressions
+    // should not be considered a semantic error but an internal compiler
+    // error as they should have been handled in parsing.
+
+    case EXPR::CMP:
+    {
+        assert(be->e1);
+        assert(be->e2);
+        assert(be->e1->kind != EXPR::NOT);
+        assert(be->e2->kind != EXPR::NOT);
+        Type *ty1 = be->e1->accept(this);
+        Type *ty2 = be->e2->accept(this);
+        bool is_correct = true;
+
+        if (ty1 != this->type_table.int_type) {
+            typecheck_error(expr->loc, "Bad left operand for binary operator `<`. Operand ",
+                            "of int type was expected");
+            is_correct = false;
+        }
+        if (ty2 != this->type_table.int_type) {
+            typecheck_error(expr->loc, "Bad right operand for binary operator `<`. Operand ",
+                            "of int type was expected");
+            is_correct = false;
+        }
+        if (is_correct) {
+            return this->type_table.bool_type;
+        }
+        return this->type_table.undefined_type;
+    } break;
+
+    case EXPR::PLUS:
+    case EXPR::MINUS:
+    case EXPR::TIMES:
+    {
+        assert(be->e1);
+        assert(be->e2);
+        assert(be->e1->kind != EXPR::NOT);
+        assert(be->e2->kind != EXPR::NOT);
+        Type *ty1 = be->e1->accept(this);
+        Type *ty2 = be->e2->accept(this);
+        bool is_correct = true;
+        int op = '+';
+
+        if (be->kind == EXPR::MINUS) {
+            op = '-';
+        } else if (be->kind == EXPR::TIMES) {
+            op = '*';
+        }
+
+        if (ty1 != this->type_table.int_type) {
+            typecheck_error(expr->loc, "Bad left operand for binary operator `", (char)op ,
+                            "`. Operand of int type was expected");
+            is_correct = false;
+        }
+        if (ty2 != this->type_table.int_type) {
+            typecheck_error(expr->loc, "Bad right operand for binary operator `", (char)op ,
+                            "`. Operand of int type was expected");
+            is_correct = false;
+        }
+        if (is_correct) {
+            return this->type_table.int_type;
+        }
+        return this->type_table.undefined_type;
+    } break;
+    
     case EXPR::UNDEFINED:
     {
         return this->type_table.undefined_type;

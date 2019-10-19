@@ -39,12 +39,48 @@ class C {
         return ;
     }
 
-    public int[] test5(int[] e) {
-        return e.length;
+    public int test_length(int[] e) {
+        return e.length;  // e must be array (here it is)
     }
 
-    public int[] test6(int e) {
+    public boolean test_not(int e) {
         return !e;  // Error
+    }
+
+    public boolean test_and(int e) {
+        return true && e;  // Error, right operand is not boolean
+    }
+
+    public boolean test_cmp_correct(int e, int f) {
+        return e < f;  // Correct
+    }
+
+    public boolean test_cmp_wrong(boolean e, int f) {
+        return e < f;  // Wrong
+    }
+
+    public int test_plus_correct(int a, int b) {
+        return a + b;
+    }
+
+    public int test_plus_wrong(int a, int[] b) {
+        return a + b;
+    }
+
+    public int test_minus_correct(int a, int b) {
+        return a - 1;
+    }
+
+    public int test_minus_wrong(int a, B b) {
+        return a - b;
+    }
+
+    public int test_times_correct(int a) {
+        return a * 2;
+    }
+
+    public int test_times_wrong(boolean a, int b) {
+        return a * b;
     }
 }
 

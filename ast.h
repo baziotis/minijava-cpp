@@ -36,11 +36,11 @@ struct ParsingTemporaryAllocation {
 enum class EXPR {
     __FIRST,
     UNDEFINED = __FIRST,
-    AND,
-    CMP,
-    PLUS,
-    MINUS,
-    TIMES,
+    AND,  // Done
+    CMP,  // Done
+    PLUS,  // Done
+    MINUS,  // Done
+    TIMES, // Done
     ARR_LOOK,
     ARR_LEN, // Done
     MSG_SEND,
