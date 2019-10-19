@@ -1,0 +1,1 @@
+ERROR_return_mismatch.java: 10:  Semantic Error: The type: `int` of the return expression does not match the return type: `boolean` of method: `test`

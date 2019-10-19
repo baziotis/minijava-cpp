@@ -308,7 +308,7 @@ void MainTypeCheckVisitor::visit(Method *method) {
         if (ret_type != method->ret_type) {
             typecheck_error(method->ret_expr->loc, "The type: `", ret_type->name(),
                             "` of the return expression does not match the ",
-                            " return type: `", method->ret_type->name(),
+                            "return type: `", method->ret_type->name(),
                             "` of method: `", method->id, "`");
         }
     }
@@ -383,6 +383,8 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         assert(this->curr_class);
         Type *type = lookup_id(expr->id, this->curr_method, this->curr_class);
         if (!type) {
+            typecheck_error(expr->loc, "In identifier expression, Identifier: `",
+                            expr->id, "` does is not defined.");
             return this->type_table.undefined_type;
         }
         return type;

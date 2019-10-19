@@ -1,0 +1,2 @@
+ERROR_unknown_id.java: 8:  Semantic Error: In identifier expression, Identifier: `a` does is not defined.
+ERROR_unknown_id.java: 8:  Semantic Error: The type: `Undefined Type (Error)` of the return expression does not match the return type: `int` of method: `test`
