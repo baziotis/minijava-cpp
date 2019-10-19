@@ -639,7 +639,7 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
     assert(asgn_stmt->rhs);
     Type *rhs = asgn_stmt->rhs->accept(this);
     if (lhs != rhs) {
-        typecheck_error(asgn_stmt->loc, "In assignment statemet, ",
+        typecheck_error(asgn_stmt->loc, "In assignment statement, ",
                         "the left-hand-side type: `", lhs->name(),
                         "` does not match that of the right-hand-side: `",
                         rhs->name(), "`");
@@ -703,6 +703,9 @@ void MainTypeCheckVisitor::visit(WhileStatement *while_stmt) {
 void MainTypeCheckVisitor::visit(PrintStatement *print_stmt) {
     LOG_SCOPE;
     debug_print("MainTypeCheck::PrintStatement\n");
+    // A print statement can have any type, we visit it only for
+    // type-checking purposes.
+    print_stmt->to_print->accept(this);
 }
 
 /* Types
