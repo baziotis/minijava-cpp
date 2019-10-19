@@ -3,6 +3,7 @@
 
 #include <fstream>
 #include <string>
+#include <cstring>
 #include <sstream>
 
 #include "ast.h"
@@ -38,11 +39,19 @@ Goal parse_and_return_goal() {
 }
 
 int main(int argc, char **argv) {
-    assert(argc == 2);
     filename = argv[1];
 
     config.log = false;
     config.ansi_style = false;
+
+    for (int i = 1; i != argc; ++i) {
+        if (!strcmp(argv[i], "-v")) {
+            config.log = true;
+        }
+        if (!strcmp(argv[i], "-style")) {
+            config.ansi_style = true;
+        }
+    }
 
     Goal goal = parse_and_return_goal();
 

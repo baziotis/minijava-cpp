@@ -4,4 +4,4 @@ Source code guide will come. The project is immature and there is a little of ha
 
 # Temporary Usage
 
-`./compile.sh && ./main test.java`
+`./compile.sh && ./main filename.java {-v} {-style}`
