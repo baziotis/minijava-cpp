@@ -42,6 +42,7 @@ struct Type;
 
 // A SerializedHashTable with just hardcoded the primitive types.
 struct TypeTable {
+    Type *undefined_type;
     Type *bool_type;
     Type *int_type;
     Type *int_arr_type;
@@ -96,16 +97,18 @@ struct DeclarationVisitor {
  */
 struct MainTypeCheckVisitor {
     TypeTable type_table;
+    Method *curr_method;
+    IdType *curr_class;
 
     MainTypeCheckVisitor(TypeTable ttable) :
-        type_table(ttable) { }
+        type_table(ttable), curr_method(NULL), curr_class(NULL) { }
     void    visit(Goal *g);
     void    visit(MainClass *main_class);
     void    visit(IdType *type);
     void    visit(Method *method);
 
-    void    visit(Expression *expr);
-    void    visit(BinaryExpression *bin_expr);
+    Type*   visit(Expression *expr);
+    Type*   visit(BinaryExpression *bin_expr);
 };
 
 /* Types

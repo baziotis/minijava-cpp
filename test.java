@@ -31,7 +31,7 @@ class C {
     
     public int test2(D d, int e) {
         int c;
-        return 2;
+        return new int [34];
     }
 
     public int test4(D d, int d) {
