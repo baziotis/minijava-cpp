@@ -42,15 +42,15 @@ enum class EXPR {
     MINUS,
     TIMES,
     ARR_LOOK,
-    ARR_LEN,
+    ARR_LEN, // Done
     MSG_SEND,
-    NOT,
-    ID,
-    INT_LIT,
-    BOOL_LIT,
-    THIS,
-    ARR_ALLOC,
-    ALLOC,
+    NOT, // Done
+    ID,  // Done
+    INT_LIT,  // Done
+    BOOL_LIT,  // Done
+    THIS, // Done
+    ARR_ALLOC, // Done
+    ALLOC,  // Done
     __LAST = ALLOC,
 };
 

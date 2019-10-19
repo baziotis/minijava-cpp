@@ -205,6 +205,7 @@ static Expression *parse_expr_clause() {
     if (match_token(TOK::NOT)) {
         expr = new Expression;
         expr->loc = loc;
+        log(loc);
         expr->kind = EXPR::NOT;
         expr->e1 = parse_expr_clause();
     } else {

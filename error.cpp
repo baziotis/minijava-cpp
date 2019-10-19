@@ -4,6 +4,7 @@
 #include "common.h"
 #include "tokens.h"
 #include "ast.h"
+#include "typecheck.h"
 
 extern location_t loc;
 extern const char *filename;

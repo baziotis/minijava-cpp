@@ -38,6 +38,14 @@ class C {
         int c;
         return ;
     }
+
+    public int[] test5(int[] e) {
+        return e.length;
+    }
+
+    public int[] test6(int e) {
+        return !e;  // Error
+    }
 }
 
 class D {

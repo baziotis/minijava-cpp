@@ -413,7 +413,6 @@ Lid:
         while (*input != 0 && *input != '\n') {
             ++input;
         }
-        encountered_newline();
         goto lex_again;
     } break;
 

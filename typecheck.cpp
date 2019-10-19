@@ -375,6 +375,27 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         }
         return this->type_table.int_arr_type;
     } break;
+    case EXPR::ARR_LEN:
+    {
+        Type *arr = expr->e1->accept(this);
+        if (arr != this->type_table.int_arr_type) {
+            typecheck_error(expr->loc, "In array length expression, ",
+                            "the dereferenced id must be of integer array type.");
+            return this->type_table.undefined_type;
+        }
+        return this->type_table.int_type;
+    } break;
+    case EXPR::NOT:
+    {
+        Type *ty = expr->e1->accept(this);
+        if (ty != this->type_table.bool_type) {
+            typecheck_error(expr->loc, "Bad operand for unary operator `!`. Operand ",
+                            "of boolean type was expected");
+            // TODO: Found what? It requires some changes to the log in error.cpp
+            return this->type_table.undefined_type;
+        }
+        return this->type_table.bool_type;
+    } break;
     case EXPR::UNDEFINED:
     {
         return this->type_table.undefined_type;
