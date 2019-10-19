@@ -3,7 +3,6 @@ class stefanos {
         int a;
         if (a) {
         } else { }
-        System.out.println(a);
     }
 }
 

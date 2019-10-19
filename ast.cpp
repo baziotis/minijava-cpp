@@ -185,24 +185,23 @@ void typespec_print(Typespec tspec) {
     switch (tspec.kind) {
     case TYSPEC::UNDEFINED:
     {
-        debug_print("Undefined Typespec (Error)");
+        printf("Undefined Typespec (Error)");
     } break;
     case TYSPEC::ARR:
     {
-        debug_print("int[]");
+        printf("int[]");
     } break;
     case TYSPEC::INT:
     {
-        debug_print("int");
+        printf("int");
     } break;
     case TYSPEC::BOOL:
     {
-
-        debug_print("boolean");
+        printf("boolean");
     } break;
     case TYSPEC::ID:
     {
-        debug_print("Id Type: %s", tspec.id);
+        printf("Id Type: %s", tspec.id);
     } break;
     default: assert(0);
     }
