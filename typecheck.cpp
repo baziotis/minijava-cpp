@@ -758,6 +758,25 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     }
 }
 
+static bool compatible_types(Type *lhs, Type *rhs) {
+    if (lhs == rhs) return true;
+    IdType *ty1 = lhs->is_IdType();
+    IdType *ty2 = rhs->is_IdType();
+    if (ty1 && ty2) {
+        IdType *runner = ty2;
+        while (runner->parent) {
+            runner = runner->parent;
+            if (runner == ty1) {
+                return true;
+            }
+            // Cyclic inheritance, we issue error elsewhere.
+            if (runner == ty2) break;
+        }
+        return false;
+    }
+    return false;
+}
+
 /* Statements
  */
 // TODO: Global error counting to known whether there was error in statement.
@@ -782,11 +801,10 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
     }
     assert(asgn_stmt->rhs);
     Type *rhs = asgn_stmt->rhs->accept(this);
-    if (lhs != rhs) {
-        typecheck_error(asgn_stmt->loc, "In assignment statement, ",
-                        "the left-hand-side type: `", lhs->name(),
-                        "` does not match that of the right-hand-side: `",
-                        rhs->name(), "`");
+    if (!compatible_types(lhs, rhs)) {
+        typecheck_error(asgn_stmt->loc, "Incompatible types: `",
+                        rhs->name(), "` can't be converted to `",
+                        lhs->name(), "`");
     }
 }
 
