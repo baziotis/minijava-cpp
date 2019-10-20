@@ -610,25 +610,18 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         return this->type_table.undefined_type;
     } break;
 
-
-    // If e1, e2 in the CMP, PLUS, MINUS, TIMES are NOT expressions
-    // should not be considered a semantic error but an internal compiler
-    // error as they should have been handled in parsing.
-
     case EXPR::CMP:
     {
         debug_print("MainTypeCheck::CmpExpression\n");
         assert(be->e1);
         assert(be->e2);
-        assert(be->e1->kind != EXPR::NOT);
-        assert(be->e2->kind != EXPR::NOT);
         Type *ty1 = be->e1->accept(this);
         Type *ty2 = be->e2->accept(this);
         bool is_correct = true;
 
         if (ty1 != this->type_table.int_type) {
             typecheck_error(expr->loc, "Bad left operand for binary operator `<`. Operand ",
-                            "of int type was expected, found: `", ty2->name(), "`");
+                            "of int type was expected, found: `", ty1->name(), "`");
             is_correct = false;
         }
         if (ty2 != this->type_table.int_type) {
@@ -647,8 +640,6 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     {
         assert(be->e1);
         assert(be->e2);
-        assert(be->e1->kind != EXPR::NOT);
-        assert(be->e2->kind != EXPR::NOT);
         Type *ty1 = be->e1->accept(this);
         Type *ty2 = be->e2->accept(this);
         bool is_correct = true;
@@ -674,7 +665,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         if (ty2 != this->type_table.int_type) {
             typecheck_error(expr->loc, "Bad right operand for binary operator `", (char)op ,
                             "`. Operand of int type was expected, found: `",
-                            ty1->name(), "`");
+                            ty2->name(), "`");
             is_correct = false;
         }
         if (is_correct) {
@@ -687,8 +678,6 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         debug_print("MainTypeCheck::ArrayLookupExpression\n");
         assert(be->e1);
         assert(be->e2);
-        assert(be->e1->kind != EXPR::NOT);
-        assert(be->e2->kind != EXPR::NOT);
         Type *ty1 = be->e1->accept(this);
         Type *ty2 = be->e2->accept(this);
         bool is_correct = true;
@@ -714,7 +703,6 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     {
         debug_print("MainTypeCheck::MessageSendExpression\n");
         assert(be->e1);
-        assert(be->e1->kind != EXPR::NOT);
         IdType *type = (IdType*) be->e1->accept(this);
         assert(type);
 

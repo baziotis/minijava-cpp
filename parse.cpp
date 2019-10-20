@@ -277,13 +277,9 @@ static Expression *parse_expr() {
     }
     TOK kind;
     BinaryExpression *bin_expr;
-    // Note: This is _not_ a loop; We can't have 1 + 2 + 3.
+    // Note: This is _not_ a loop; We can't have 1 + 2 + 3. But we
+    // can have: (1 + 2) + 3
     if (is_op(token.kind)) {
-        if(e1->kind == EXPR::NOT && !is_token(TOK::AND_AND)) {
-            syntax_error("Can't use a `not expression` as operand in operator ",
-                         token_name(token.kind));
-            return e1;
-        }
         bin_expr = new BinaryExpression;
         bin_expr->loc = loc;
         bin_expr->e1 = e1;
