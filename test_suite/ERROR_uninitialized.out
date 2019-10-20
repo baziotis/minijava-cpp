@@ -1,0 +1,1 @@
+ERROR_uninitialized.java: 11:  Semantic Error: Variable: `a` might have not been initialized.

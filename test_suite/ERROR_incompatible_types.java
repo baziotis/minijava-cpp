@@ -8,6 +8,7 @@ class A {
     public int test() {
         B b;
         C c;
+        b = new B();  // to avoid uninitialized error
         c = b;
         return 1;
     }
@@ -18,6 +19,7 @@ class A {
 
     public int test3() {
         B b;
+        b = new B();  // to avoid uninitialized error
         return this.test2(b);
     }
 }

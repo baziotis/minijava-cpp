@@ -194,6 +194,8 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
                             "`, redefinition of field with id: `", field->id, "`");
         } else {
             field = ld->accept(this);
+            // All fields are considered initialized.
+            field->initialized = true;
             //field->type->print();
             type->fields.insert(field->id, field);
         }
@@ -281,6 +283,8 @@ Method *DeclarationVisitor::visit(MethodDeclaration *method_decl) {
         } else {
             param->type->print();
         }
+        // All params are considered initialized.
+        param->initialized = true;
         method->locals.insert(param->id, param);
     }
     for (LocalDeclaration *var : method_decl->vars) {
@@ -428,16 +432,16 @@ void MainTypeCheckVisitor::visit(Method *method) {
     this->curr_method = NULL;
 }
 
-static Type *lookup_id(const char *id, Method *method, IdType *cls) {
+static Local *lookup_local(const char *id, Method *method, IdType *cls) {
     // Check current method's locals (vars and params).
     Local *local = method->locals.find(id);
     if (local) {
-        return local->type;
+        return local;
     }
     // Check current class's fields.
     local = cls->fields.find(id);
     if (local) {
-        return local->type;
+        return local;
     }
     // Check parent's fields (account for cyclic inheritance).
     IdType *runner = cls;
@@ -445,7 +449,7 @@ static Type *lookup_id(const char *id, Method *method, IdType *cls) {
         runner = cls->parent;
         local = runner->fields.find(id);
         if (local) {
-            return local->type;
+            return local;
         }
         // Cyclic inheritance, we issue error elsewhere.
         if (runner == cls) break;
@@ -500,13 +504,18 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         debug_print("MainTypeCheck::IdExpression: %s\n", expr->id);
         assert(this->curr_method);
         assert(this->curr_class);
-        Type *type = lookup_id(expr->id, this->curr_method, this->curr_class);
-        if (!type) {
+        Local *local = lookup_local(expr->id, this->curr_method, this->curr_class);
+        if (!local) {
             typecheck_error(expr->loc, "In identifier expression, Identifier: `",
                             expr->id, "` does is not defined.");
             return this->type_table.undefined_type;
+        } else if (!local->initialized) {
+            // Only variables can remain uninitialized. Check
+            // TypeDeclaration and MethodDeclaration in DeclarationVisitor.
+            typecheck_error(expr->loc, "Variable: `",
+                            expr->id, "` might have not been initialized.");
         }
-        return type;
+        return local->type;
     } break;
     case EXPR::INT_LIT:
     {
@@ -776,19 +785,20 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
     debug_print("MainTypeCheck::AssignmentStatement\n");
     assert(this->curr_method);
     assert(this->curr_class);
-    Type *lhs = lookup_id(asgn_stmt->id, this->curr_method, this->curr_class);
+    Local *lhs = lookup_local(asgn_stmt->id, this->curr_method, this->curr_class);
     if (!lhs) {
         // Of course, with variable we mean also parameter and field.
         typecheck_error(asgn_stmt->loc, "In assignment statement, variable: `",
                         asgn_stmt->id, "` is not defined");
     }
     assert(asgn_stmt->rhs);
-    Type *rhs = asgn_stmt->rhs->accept(this);
-    if (!compatible_types(lhs, rhs)) {
+    Type *rhs_type = asgn_stmt->rhs->accept(this);
+    if (!compatible_types(lhs->type, rhs_type)) {
         typecheck_error(asgn_stmt->loc, "Incompatible types: `",
-                        rhs->name(), "` can't be converted to `",
-                        lhs->name(), "`");
+                        rhs_type->name(), "` can't be converted to `",
+                        lhs->type->name(), "`");
     }
+    lhs->initialized = true;
 }
 
 void MainTypeCheckVisitor::visit(ArrayAssignmentStatement *arr_asgn_stmt) {
@@ -796,25 +806,26 @@ void MainTypeCheckVisitor::visit(ArrayAssignmentStatement *arr_asgn_stmt) {
     debug_print("MainTypeCheck::ArrayAssignmentStatement\n");
     assert(this->curr_method);
     assert(this->curr_class);
-    Type *arr = lookup_id(arr_asgn_stmt->id, this->curr_method, this->curr_class);
+    Local *arr = lookup_local(arr_asgn_stmt->id, this->curr_method, this->curr_class);
     if (!arr) {
         typecheck_error(arr_asgn_stmt->loc, "In array assignment statement, array: `",
                         arr_asgn_stmt->id, "` is not defined");
     }
     assert(arr_asgn_stmt->index);
-    Type *index = arr_asgn_stmt->index->accept(this);
-    if (index != this->type_table.int_type) {
+    Type *index_type = arr_asgn_stmt->index->accept(this);
+    if (index_type != this->type_table.int_type) {
         typecheck_error(arr_asgn_stmt->loc, "In array assignment statement, the ",
                         "index expression must have `int` type but has: `",
-                        index->name(), "`");
+                        index_type->name(), "`");
     }
     assert(arr_asgn_stmt->rhs);
-    Type *rhs = arr_asgn_stmt->rhs->accept(this);
-    if (rhs != this->type_table.int_type) {
+    Type *rhs_type = arr_asgn_stmt->rhs->accept(this);
+    if (rhs_type != this->type_table.int_type) {
         typecheck_error(arr_asgn_stmt->loc, "In array assignment statement, the ",
                         "right-hand-side expression must have `int` type but has: `",
-                        rhs->name(), "`");
+                        rhs_type->name(), "`");
     }
+    arr->initialized = true;
 }
 
 void MainTypeCheckVisitor::visit(IfStatement *if_stmt) {

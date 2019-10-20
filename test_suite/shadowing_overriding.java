@@ -36,6 +36,7 @@ class C extends D {
     public C test2() {
         // Shadow field `a` in method.
         C a;
+        a = new C();  // To avoid uninitialized error
         return a;
     }
 }

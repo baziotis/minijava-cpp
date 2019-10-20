@@ -1,2 +1,2 @@
-ERROR_incompatible_types.java: 11:  Semantic Error: Incompatible types: `B` can't be converted to `C`
-ERROR_incompatible_types.java: 21:  Semantic Error: Argument no. 1 has incompatible type: `B` with the formal parameter type: `C` in method with id: `test2` in message send expression
+ERROR_incompatible_types.java: 12:  Semantic Error: Incompatible types: `B` can't be converted to `C`
+ERROR_incompatible_types.java: 23:  Semantic Error: Argument no. 1 has incompatible type: `B` with the formal parameter type: `C` in method with id: `test2` in message send expression

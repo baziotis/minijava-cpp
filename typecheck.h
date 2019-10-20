@@ -197,9 +197,10 @@ struct Type : public TypeCheckCustomAllocation {
 struct Local  : public TypeCheckCustomAllocation {
     const char *id;
     Type *type;
+    bool initialized;
 
-    Local() : id(NULL) { }
-    Local(const char *_id, Type *_type) : id(_id), type(_type) { }
+    Local() : id(NULL), initialized(false) { }
+    Local(const char *_id, Type *_type) : id(_id), type(_type), initialized(false) { }
 
 };
 
