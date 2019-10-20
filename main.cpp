@@ -64,12 +64,3 @@ int main(int argc, char **argv) {
     
     typecheck(goal);
 }
-
-/* For a method
-- If we don't have overloading, check that the name does not exist (otherwise
-  check that if it exists, they have the same return type).
-- When parsing the parameters, verify that a parameter with the same name does
-  not exist. _However_, I think that a local variable of the class can exist
-  and the parameter overrides it. The same thing is for local variables of
-  the method.
-*/

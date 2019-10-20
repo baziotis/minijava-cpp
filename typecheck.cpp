@@ -234,6 +234,8 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
             } else {
                 method = md->accept(this);
                 //method->print();
+                assert(method);
+                assert(method->id);
                 type->methods.insert(method->id, method);
             }
         }
@@ -269,6 +271,7 @@ Method *DeclarationVisitor::visit(MethodDeclaration *method_decl) {
     print_indentation();
     debug_log(method_decl->loc, "MethodDeclaration: ", method_decl->id, "\n");
     Method *method = new Method(method_decl);
+    assert(method);
     method->ret_type = this->typespec_to_type(method_decl->typespec);
     for (LocalDeclaration *par : method_decl->params) {
         // We accept the param anyway. But in the case that there is

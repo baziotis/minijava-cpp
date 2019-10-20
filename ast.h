@@ -298,7 +298,7 @@ struct LocalDeclaration : public ParsingTemporaryAllocation {
     /* Type-checking - Pass 1
     */
     Local *accept(DeclarationVisitor *v) {
-        v->visit(this);
+        return v->visit(this);
     }
 };
 
@@ -330,7 +330,7 @@ struct MethodDeclaration : public ParsingTemporaryAllocation {
     /* Type-checking - Pass 1
     */
     Method *accept(DeclarationVisitor *v) {
-        v->visit(this);
+        return v->visit(this);
     }
 };
 

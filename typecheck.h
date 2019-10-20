@@ -17,9 +17,9 @@ struct SerializedHashTable {
     SerializedHashTable() { }
 
     inline bool insert(const char *id, T v) {
+        if (len == cap) return false;
         // Insert into HT
         if (table.insert(id, v)) {
-            assert(len != cap);
             // Insert into serialized data
             serialized[len] = v;
             len = len + 1;
@@ -32,6 +32,7 @@ struct SerializedHashTable {
         cap = n;
         len = 0;
         serialized = (T *) allocate(cap * sizeof(T), MEM::TYPECHECK);
+        assert(serialized);
         table.reserve(cap);
     }
 

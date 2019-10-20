@@ -93,11 +93,14 @@ void *allocate(size_t n, MEM enum_ar) {
         arena[ar] = ap;
     }
     ap->avail += n;
-    return (void*)(ap->avail - n);
+    void *ret = (void*)(ap->avail - n);
+    assert(ret);
+    return ret;
 }
 
 void *allocate_zero(size_t n, MEM ar) {
     void *mem = allocate(n, ar);
+    assert(mem);
     // Zero it
     memset(mem, 0, n);
     return mem;

@@ -39,7 +39,9 @@ struct __HashTable
         if (nelements) {
             nbuckets = nelements / 0.7;
             ids = (const char **) allocate_zero(nbuckets * sizeof(const char *), mem);
+            assert(ids);
             data = (T *) allocate_zero(nbuckets * sizeof(T), mem);
+            assert(data);
             for (size_t i = 0; i != nbuckets; ++i) {
                 ids[i] = nullptr;
             }
