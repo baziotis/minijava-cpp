@@ -736,6 +736,9 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
                                 ") of method with id: `", method->id, "`");
             return method->ret_type;
         }
+
+        // IMPORTANT - TODO: Check if the expression list matches a whole
+        // method parameter list. If it fails, check parent method.
         
         size_t formal_param_counter = 0;
         for (Expression *e : be->msd->expr_list) {
