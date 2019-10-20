@@ -13,8 +13,8 @@ class A {
         return ((1 + 2) + 3) + 4;
     }
 
-    public int lispy() {
-        return ((((1) + 2) + 3));
+    public int lispy(int[] a) {
+        return ((((1) + 2) + (a[3])));
     }
 
     public boolean t3() {
@@ -29,5 +29,11 @@ class A {
         int[] arr;
         arr = new int[10];  // avoid uninitialized error
         return ( ((29347 + (this.t2()) ) < 12 ) && ( ( (a < (arr[0]) ) && (this.t3()) ) && (this.t4(this.t2(), arr)) ) );
+    }
+
+    public int t5(int[] a) {
+        int b;
+        b = new int [(new int[(this.t2()) + (this.lispy(new int [a[0]]))][0]) + 10][2];
+        return a[b];
     }
 }
