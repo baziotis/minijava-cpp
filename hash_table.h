@@ -65,7 +65,7 @@ struct __HashTable
 
 public:
 
-    inline void insert(const char *key, T value) {
+    inline bool insert(const char *key, T value) {
         assert(key);
         assert(nbuckets);
         size_t bucket = this->hash(key);
@@ -75,7 +75,7 @@ public:
             if (this->ids[i] == nullptr) {
                 this->ids[i] = key;
                 this->data[i] = value;
-                return;
+                return true;
             } else if (this->ids[i] == key) {
                 printf("\tDUPLICATE: %s\n", key);
                 // Duplicates are not allowed
@@ -85,8 +85,7 @@ public:
             if (i == this->nbuckets) i = 0;
             wrapped = (i == bucket); 
         }
-
-        assert(false);
+        return false;
     }
 
     inline T find(const char *key) {

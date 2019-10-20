@@ -6,10 +6,7 @@ class Main {
 
 class A {
     public int test() {
-        return new A().foo();
-    }
-
-    public int foo() {
+        B b;
         return 1;
     }
 }

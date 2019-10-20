@@ -40,6 +40,16 @@ void typecheck(Goal goal) {
     if (config.log) {
         printf("\n");
     }
+    // TODO: How able we are to continue?
+    // Print types that could not be inserted. This can
+    // happen if the types used are more than the type
+    // declarations. See TypeTable.
+    for (IdType *type : type_table.could_not_be_inserted) {
+        location_t __loc = { 0 };
+        // TODO: We don't have location
+        typecheck_error(__loc, "Type `", type->id, "` has not been ",
+                        "defined");
+    }
     // Pass 2
     full_typecheck(&goal, type_table);
 }
@@ -73,12 +83,27 @@ Type* DeclarationVisitor::typespec_to_type(Typespec tspec) {
     }
 }
 
+/* Type Table
+ */
 void TypeTable::initialize(size_t n) {
     type_table.reserve(n);
     undefined_type = new Type(TY::UNDEFINED);
     bool_type = new Type(TY::BOOL);
     int_type = new Type(TY::INT);
     int_arr_type = new Type(TY::ARR);
+}
+
+
+void TypeTable::insert(const char *id, IdType* v) {
+    if (!type_table.insert(id, v)) {
+        // Search in the auxiliary buffer
+        for (IdType *type : could_not_be_inserted) {
+            if (type->id == id) {
+                return;
+            }
+        }
+        could_not_be_inserted.push(v);
+    }
 }
 
 DeclarationVisitor::DeclarationVisitor(size_t ntype_decls) {

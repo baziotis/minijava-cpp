@@ -37,8 +37,16 @@ int main()
         int namelen;
         if (ends_with(entry->d_name, ".java", &namelen))
         {
+            FILE *fp = fopen(entry->d_name, "r");
+            char params[64];
+            // Read until next line; the compilation flags
+            fscanf(fp, "%[^\n]", params);
+            assert(params[0] = '/' && params[1] == '/' && params[2] == ' ');
+            char *par_ptr = params;
+            par_ptr += 3;
+            fclose(fp);
             char buf[512];
-            sprintf(buf, "../main %s > curr_out", entry->d_name);
+            sprintf(buf, "../main %s %s > curr_out", entry->d_name, par_ptr);
             system(buf);
             sprintf(buf, "diff curr_out %.*s.out > curr_diff", namelen - 5, entry->d_name);
             system(buf);

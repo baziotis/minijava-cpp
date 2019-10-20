@@ -43,10 +43,14 @@ int main(int argc, char **argv) {
 
     config.log = false;
     config.ansi_style = false;
+    config.unused = true;
 
     for (int i = 1; i != argc; ++i) {
         if (!strcmp(argv[i], "-v")) {
             config.log = true;
+        }
+        if (!strcmp(argv[i], "-unused")) {
+            config.unused = false;
         }
         if (!strcmp(argv[i], "-style")) {
             config.ansi_style = true;

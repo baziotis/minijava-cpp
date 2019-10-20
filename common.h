@@ -11,6 +11,7 @@ struct location_t {
 struct config_t {
     bool log;
     bool ansi_style;
+    bool unused;  // Issue message for unused types
 };
 
 #endif

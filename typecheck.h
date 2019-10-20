@@ -12,21 +12,27 @@ struct SerializedHashTable {
     HashTable<T> table;
     T *serialized;
     size_t len;
+    size_t cap;  // For debugging
 
     SerializedHashTable() { }
 
-    inline void insert(const char *id, T v) {
-        // Insert into serialized data
-        serialized[len] = v;
-        len = len + 1;
+    inline bool insert(const char *id, T v) {
         // Insert into HT
-        table.insert(id, v);
+        if (table.insert(id, v)) {
+            assert(len != cap);
+            // Insert into serialized data
+            serialized[len] = v;
+            len = len + 1;
+            return true;
+        }
+        return false;
     }
 
     inline void reserve(size_t n) {
+        cap = n;
         len = 0;
-        serialized = (T *) allocate(n * sizeof(T), MEM::TYPECHECK);
-        table.reserve(n);
+        serialized = (T *) allocate(cap * sizeof(T), MEM::TYPECHECK);
+        table.reserve(cap);
     }
 
     inline T find(const char *key) {
@@ -49,12 +55,22 @@ struct TypeTable {
     Type *int_type;
     Type *int_arr_type;
     SerializedHashTable<IdType*> type_table;
+    Buf<IdType*> could_not_be_inserted;
 
     TypeTable() { }
 
-    inline void insert(const char *id, IdType* v) {
-        type_table.insert(id, v);
-    }
+    // Note: The type table is initialized with a static
+    // size, that is the number of type declarations.
+    // In the most common case, the number of type
+    // declarations match the number of types used (or
+    // the latter is less). However, there is the case
+    // that the user uses an undefined type and then
+    // it is possible that the hash table does not
+    // have space. We insert into an auxiliary
+    // buffer and issue a message in the end of Pass 1.
+    // Check definition of insert.
+
+    void insert(const char *id, IdType* v);
 
     void initialize(size_t n);
 
