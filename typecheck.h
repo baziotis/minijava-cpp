@@ -235,6 +235,7 @@ struct IdType : public Type {
     }
 
     void set_sizes(size_t nfields, size_t nmethods) {
+        kind = TY::ID;
         fields.reserve(nfields);
         methods.reserve(nmethods);
     }

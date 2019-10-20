@@ -65,16 +65,15 @@ void expr_print(Expression *e) {
     case EXPR::MSG_SEND:
     {
         BinaryExpression *be = (BinaryExpression*) e;
-        debug_line("(MessageSend");
+        debug_print("(MessageSend\n");
         expr_print(be->e1);
         // For some reason, debug_line does not work here
         debug_print("- Id: %s\n", be->msd->id);
         debug_print("- Expression list:\n");
-        LOG_SCOPE;
         for (Expression* e2 : be->msd->expr_list) {
             expr_print(e2);
         }
-        debug_line(")");
+        debug_print(")\n");
     } break;
     case EXPR::ID:
     {

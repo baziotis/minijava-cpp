@@ -140,8 +140,7 @@ static Statement *parse_stmt();
 /* Expressions
  */
 static Expression *parse_expr_primary() {
-    if (is_token(TOK::LPAR)) {
-        next_token();
+    if (match_token(TOK::LPAR)) {
         Expression *expr = parse_expr();
         expect_token(TOK::RPAR);
         return expr;

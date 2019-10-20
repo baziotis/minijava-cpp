@@ -20,39 +20,6 @@ void typecheck_init() {
 TypeTable install_type_declarations(Goal *goal) {
     DeclarationVisitor decl_visitor(goal->type_decls.len);
     goal->accept(&decl_visitor);
-    
-    /* Use with test.java */
-    // TODO: remove that
-    //TypeTable type_table = decl_visitor.type_table;
-    //Type *type = type_table.find(str_intern("A"));
-    //assert(type);
-    //IdType *id_type = type->is_IdType();
-    //assert(id_type);
-    //Field *field = id_type->fields.find(str_intern("b"));
-    //assert(field);
-    //Method *method = id_type->methods.find(str_intern("test"));
-    //assert(method);
-
-    //assert(id_type->fields.find(str_intern("c")) == NULL);
-    //assert(id_type->methods.find(str_intern("other")) == NULL);
-
-    //Type *D_type = type_table.find(str_intern("D"));
-    //assert(D_type->is_IdType());
-    //IdType *C_type = type_table.find(str_intern("C"));
-    //assert(C_type->is_IdType());
-    //Field *d2_field = C_type->fields.find(str_intern("d2"));
-    //assert(d2_field->type == D_type);
-
-    //// Test inheritance (A is supposed to inherit from B)
-    //IdType *B_type = type_table.find(str_intern("B"));
-    //IdType *A_type = type_table.find(str_intern("A"));
-    //assert(A_type);
-    //assert(B_type);
-    //assert(A_type->is_IdType());
-    //assert(B_type->is_IdType());
-    //assert(A_type->parent);
-    //assert(A_type->parent == B_type);
-
 
     // Free memory that was used for allocating objects
     // for parsing that doenot persist in pass 2 of type-checking.
@@ -481,7 +448,6 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
                             expr->id, "` does is not defined.");
             return this->type_table.undefined_type;
         }
-        type->print();
         return type;
     } break;
     case EXPR::INT_LIT:
@@ -686,6 +652,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         assert(type);
 
         if (type->kind == TY::UNDEFINED) {
+            type->print();
             typecheck_error(expr->loc, "In message send expression, Identifier: `",
                             expr->id, "` does not denote a known type");
             return this->type_table.undefined_type;
