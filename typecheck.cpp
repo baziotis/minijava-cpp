@@ -471,6 +471,26 @@ static Type *lookup_id(const char *id, Method *method, IdType *cls) {
     return NULL;
 }
 
+// True if `rhs` is child of `lhs` (or they're equal)
+static bool compatible_types(Type *lhs, Type *rhs) {
+    if (lhs == rhs) return true;
+    IdType *ty1 = lhs->is_IdType();
+    IdType *ty2 = rhs->is_IdType();
+    if (ty1 && ty2) {
+        IdType *runner = ty2;
+        while (runner->parent) {
+            runner = runner->parent;
+            if (runner == ty1) {
+                return true;
+            }
+            // Cyclic inheritance, we issue error elsewhere.
+            if (runner == ty2) break;
+        }
+        return false;
+    }
+    return false;
+}
+
 // IMPORTANT: DO NOT check if a type is undefined with equality test with
 // type_table.undefined_type. Check a note above on a full explanation.
 // A lot of types can have remained undefined (either because we never saw a definition
@@ -741,9 +761,9 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         for (Expression *e : be->msd->expr_list) {
             Type *ety = e->accept(this);
             Type *formal_type = method->locals[formal_param_counter]->type;
-            if (ety != formal_type) {
+            if (!compatible_types(formal_type, ety)) {
                 typecheck_error(expr->loc, "Argument no. ", formal_param_counter + 1,
-                                " with type: `", ety->name(), "` does not match ",
+                                " has incompatible type: `", ety->name(), "` with the ",
                                 "formal parameter type: `", formal_type->name(),
                                 "` in method with id: `", method->id,
                                 "` in message send expression");
@@ -756,25 +776,6 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     } break;
     default: assert(0); return this->type_table.undefined_type;
     }
-}
-
-static bool compatible_types(Type *lhs, Type *rhs) {
-    if (lhs == rhs) return true;
-    IdType *ty1 = lhs->is_IdType();
-    IdType *ty2 = rhs->is_IdType();
-    if (ty1 && ty2) {
-        IdType *runner = ty2;
-        while (runner->parent) {
-            runner = runner->parent;
-            if (runner == ty1) {
-                return true;
-            }
-            // Cyclic inheritance, we issue error elsewhere.
-            if (runner == ty2) break;
-        }
-        return false;
-    }
-    return false;
 }
 
 /* Statements

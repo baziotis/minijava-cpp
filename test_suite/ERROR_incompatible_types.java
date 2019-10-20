@@ -11,6 +11,15 @@ class A {
         c = b;
         return 1;
     }
+
+    public int test2(C c) {
+        return 2;
+    }
+
+    public int test3() {
+        B b;
+        return this.test2(b);
+    }
 }
 
 class B {
