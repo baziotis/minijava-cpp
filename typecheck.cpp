@@ -391,10 +391,11 @@ void MainTypeCheckVisitor::visit(IdType *type) {
             bool match = params_match(method, method_parent);
             // Note: If they _match exactly_ it is an error. Otherwise,
             // it can be disambiguated through the parameters.
-            if (params_match) {
+            if (match) {
                 // TODO: We don't have actual `loc` available.
                 // TODO: Print the parameters of each.
-                typecheck_error(loc, "Method `", method->id, "` in class: `",
+                location_t __loc = { 0 };
+                typecheck_error(__loc, "Method `", method->id, "` in class: `",
                                 type->id, "` can't override the method with the ",
                                 "same id in parent class: `", parent->id, "`");
             }
@@ -684,7 +685,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
 
         if (ty1 != this->type_table.int_arr_type) {
             typecheck_error(expr->loc, "Bad left operand for index operator `[]`. ",
-                            "Operand of int array type was expected, found: ",
+                            "Operand of int array type was expected, found: `",
                             ty1->name(), "`");
             is_correct = false;
         }
@@ -745,7 +746,8 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
                                 " has incompatible type: `", ety->name(), "` with the ",
                                 "formal parameter type: `", formal_type->name(),
                                 "` in method with id: `", method->id,
-                                "` in message send expression");
+                                "` in message send expression calling: `",
+                                method->id, "`");
                 return method->ret_type;
             }
             ++formal_param_counter;

@@ -36,4 +36,25 @@ class A {
         b = new int [(new int[(this.t2()) + (this.lispy(new int [a[0]]))][0]) + 10][2];
         return a[b];
     }
+
+    // Like t4() but more crazy (involving overriding methods)
+    public boolean t6(boolean dummy, int[] arr) {
+        int a;
+        C c;
+        a = 2;  // avoid uninitialized error
+        c = new C();  // avoid uninitialized error
+        return ( ((29347 + (this.t2()) ) < 12 ) && ( ( (a < (arr[0]) ) && (this.t3()) ) && (this.t6(this.t4( (new B().test(c.test(true)))[0], arr ), new int [arr[0]])) ) );
+    }
+}
+
+class B extends C {
+    public int[] test(int i) {
+        return new int[i];
+    }
+}
+
+class C {
+    public int test(boolean a) {
+        return 1;
+    }
 }

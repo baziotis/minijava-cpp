@@ -1,4 +1,4 @@
-ERROR_index_on_not_arr.java: 11:  Semantic Error: Bad left operand for index operator `[]`. Operand of int array type was expected, found: int`
+ERROR_index_on_not_arr.java: 11:  Semantic Error: Bad left operand for index operator `[]`. Operand of int array type was expected, found: `int`
 ERROR_index_on_not_arr.java: 11:  Semantic Error: The type: `Undefined Type (Error)` of the return expression does not match the return type: `int` of method: `test`
-ERROR_index_on_not_arr.java: 15:  Semantic Error: Bad left operand for index operator `[]`. Operand of int array type was expected, found: int`
+ERROR_index_on_not_arr.java: 15:  Semantic Error: Bad left operand for index operator `[]`. Operand of int array type was expected, found: `int`
 ERROR_index_on_not_arr.java: 15:  Semantic Error: The type: `Undefined Type (Error)` of the return expression does not match the return type: `int` of method: `foo`
