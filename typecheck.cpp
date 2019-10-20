@@ -271,6 +271,27 @@ Method *DeclarationVisitor::visit(MethodDeclaration *method_decl) {
     return method;
 }
 
+// IMPORTANT - TODO:
+// 1) Check that all the types that were used in declaration visitor
+//    were actually defined. Of the top of my head that includes
+//    var declarations, parameters, fields, return types and extends.
+// 2) Provide the ability to pass an inherited type to a method, that is:
+/*
+
+class A {
+}
+
+class B extends A {
+}
+
+test(A a) {
+}
+
+B b;
+test(b);
+*/
+// must work.
+
 /* Main TypeCheck Visitor (Pass 2)
  */
 void MainTypeCheckVisitor::visit(Goal *goal) {
