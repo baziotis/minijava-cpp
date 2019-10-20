@@ -296,24 +296,6 @@ Method *DeclarationVisitor::visit(MethodDeclaration *method_decl) {
     return method;
 }
 
-// IMPORTANT - TODO:
-// 1) Provide the ability to pass an inherited type to a method, that is:
-/*
-
-class A {
-}
-
-class B extends A {
-}
-
-test(A a) {
-}
-
-B b;
-test(b);
-*/
-// must work.
-
 /* Main TypeCheck Visitor (Pass 2)
  */
 void MainTypeCheckVisitor::visit(Goal *goal) {

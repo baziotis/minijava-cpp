@@ -18,7 +18,8 @@ class A {
 
     public int test3() {
         C c;
-        return this.test2(c);
+        D d;
+        return (this.test2(c)) + (this.test2(d));
     }
 }
 
@@ -28,4 +29,7 @@ class B {
 
 class C extends B {
     
+}
+
+class D extends C {
 }
