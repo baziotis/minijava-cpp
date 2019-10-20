@@ -272,10 +272,7 @@ Method *DeclarationVisitor::visit(MethodDeclaration *method_decl) {
 }
 
 // IMPORTANT - TODO:
-// 1) Check that all the types that were used in declaration visitor
-//    were actually defined. Of the top of my head that includes
-//    var declarations, parameters, fields, return types and extends.
-// 2) Provide the ability to pass an inherited type to a method, that is:
+// 1) Provide the ability to pass an inherited type to a method, that is:
 /*
 
 class A {
@@ -299,7 +296,19 @@ void MainTypeCheckVisitor::visit(Goal *goal) {
     debug_print("MainTypeCheck::Goal\n");
     goal->main_class.accept(this);
     for (IdType *type : this->type_table) {
-        type->accept(this);
+        if (type->is_defined()) {
+            type->accept(this);
+        } else {
+            // TODO: We don't have location
+            // TODO: This is a really bad message because the user
+            // does not know where it was used. As it seems, we already
+            // need to save one `loc` for IdTypes; where they were defined.
+            // But we may also store a buffer of `loc`s, the locations
+            // where the type was used.
+            location_t loc = { 0 };
+            typecheck_error(loc, "Type `", type->id, "` has not been ",
+                            "defined");
+        }
     }
 }
 
@@ -347,6 +356,7 @@ static bool params_match(Method *m1, Method *m2) {
 void MainTypeCheckVisitor::visit(IdType *type) {
     LOG_SCOPE;
     assert(type->is_IdType());
+    assert(type->is_defined());
     debug_print("MainTypeCheck::IdType %s\n", type->id);
 
     // Cyclic inheritance detection
