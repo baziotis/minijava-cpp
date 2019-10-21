@@ -481,6 +481,42 @@ static bool compatible_types(Type *lhs, Type *rhs) {
     return false;
 }
 
+static bool check_expr_list_against_method(Buf<Type*> expr_list, Method *method) {
+    if (expr_list.len != method->param_len) {
+        return false;
+    }
+
+    size_t formal_param_counter = 0;
+    for (Type *ety : expr_list) {
+        Type *formal_type = method->locals[formal_param_counter]->type;
+        if (!compatible_types(formal_type, ety)) {
+            return false;
+        }
+        ++formal_param_counter;
+    }
+    assert(formal_param_counter == method->param_len);
+    return true;
+}
+
+static bool deduce_method(Buf<Type*> expr_list, const char *method_id, IdType *cls, Type **ret_type) {
+    IdType *runner = cls;
+    do {
+        Method *method = lookup_method(method_id, runner);
+        if (method) {
+            if (runner == cls) {  // Only first iteration
+                *ret_type = method->ret_type;
+            }
+            if (check_expr_list_against_method(expr_list, method)) {
+                return true;
+            }
+        }
+        runner = runner->parent;
+        // Cyclic inheritance, we issue error elsewhere.
+        if (runner == cls) break;
+    } while (runner);
+    return false;
+}
+
 // IMPORTANT: DO NOT check if a type is undefined with equality test with
 // type_table.undefined_type. Check a note above on a full explanation.
 // A lot of types can have remained undefined (either because we never saw a definition
@@ -723,43 +759,19 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             return this->type_table.undefined_type;
         }
 
-        assert(this->curr_class);
-        Method *method = lookup_method(be->msd->id, type);
-
-        if (!method) {
-            typecheck_error(expr->loc, "Type with id: `", type->id, "` does not ",
-                            "have a method with id: `", be->msd->id, "`");
+        Buf<Type*> expr_list_types(be->msd->expr_list.len);
+        for (Expression *e : be->msd->expr_list) {
+            expr_list_types.push(e->accept(this));
+        }
+        Type *ret_type = NULL;
+        if (!deduce_method(expr_list_types, be->msd->id, type, &ret_type)) {
+            typecheck_error(be->loc, "No matching method with id: `", be->msd->id, "`");
+        }
+        // Assume that the user wanted the first method in the list
+        if (!ret_type) {
             return this->type_table.undefined_type;
         }
-
-        if (be->msd->expr_list.len != method->param_len) {
-            typecheck_error(expr->loc, "The no. of arguments (",
-                                be->msd->expr_list.len, ") does not match the ",
-                                "number of formal parameters (", method->param_len,
-                                ") of method with id: `", method->id, "`");
-            return method->ret_type;
-        }
-
-        // IMPORTANT - TODO: Check if the expression list matches a whole
-        // method parameter list. If it fails, check parent method.
-        
-        size_t formal_param_counter = 0;
-        for (Expression *e : be->msd->expr_list) {
-            Type *ety = e->accept(this);
-            Type *formal_type = method->locals[formal_param_counter]->type;
-            if (!compatible_types(formal_type, ety)) {
-                typecheck_error(expr->loc, "Argument no. ", formal_param_counter + 1,
-                                " has incompatible type: `", ety->name(), "` with the ",
-                                "formal parameter type: `", formal_type->name(),
-                                "` in method with id: `", method->id,
-                                "` in message send expression calling: `",
-                                method->id, "`");
-                return method->ret_type;
-            }
-            ++formal_param_counter;
-        }
-        assert(formal_param_counter == method->param_len);
-        return method->ret_type;
+        return ret_type;
     } break;
     default: assert(0); return this->type_table.undefined_type;
     }
