@@ -1,11 +1,6 @@
 #ifndef STR_INTERN_H
 #define STR_INTERN_H
 
-struct InternedStr {
-	size_t len;
-	const char *str;
-};
-
 /// Intern a NUL-terminated string.
 const char *str_intern(const char *str);
 

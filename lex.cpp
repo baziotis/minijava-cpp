@@ -27,8 +27,6 @@ enum { BLANK = 0b1, MIDCHAR = 0b10, DEC = 0b100,
 static uint8_t charmap[256];
 static uint16_t digit_from_char[256];
 
-extern Buf<InternedStr> strings;
-
 void scan_int() {
     token.kind = TOK::INTLIT;
     // Find base
