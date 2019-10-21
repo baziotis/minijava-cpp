@@ -33,6 +33,60 @@ void full_typecheck(Goal *goal, TypeTable type_table) {
     goal->accept(&main_visitor);
 }
 
+void TypeTable::compute_and_print_offsets_for_type(IdType *type) {
+    assert(type);
+    if (type->state == STATE::RESOLVING || type->state == STATE::RESOLVED) {
+        // If in STATE::RESOLVING, we have cyclic inheritance.
+        // We issue error elsewhere. Otherwise, we have already
+        // resolved this type.
+        return;
+    }
+    IdType *parent = type->parent;
+    size_t start_fields = 0;
+    size_t start_methods = 0;
+    if (parent) {
+        compute_and_print_offsets_for_type(parent);
+        start_fields = parent->fields_end;
+        start_methods = parent->methods_end;
+    }
+    
+    size_t running_offset = start_fields;
+    for (Local *field : type->fields) {
+        printf("%s.%s: %zd\n", type->id, field->id, running_offset);
+        if (field->type == this->bool_type) {
+            running_offset += 1;
+        } else if (field->type == this->int_type) {
+            running_offset += 4;
+        } else if (field->type == this->int_arr_type ||
+                   field->type->is_IdType()) {
+            running_offset += 8;
+        }
+    }
+
+    size_t fields_size = running_offset - start_fields;
+    
+
+    running_offset = start_methods;
+    for (Method *method: type->methods) {
+        if (!method->overrides) {
+            printf("%s.%s: %zd\n", type->id, method->id, running_offset);
+            running_offset += 8;
+        }
+    }
+
+    size_t methods_size = running_offset - start_methods;
+
+    type->fields_end = start_fields + fields_size;
+    type->methods_end = start_methods + methods_size;
+    type->state = STATE::RESOLVED;
+}
+
+void TypeTable::offset_computation() {
+    for (IdType *type : type_table) {
+        compute_and_print_offsets_for_type(type);
+    }
+}
+
 void typecheck(Goal goal) {
     typecheck_init();
     // Pass 1
@@ -52,6 +106,11 @@ void typecheck(Goal goal) {
     }
     // Pass 2
     full_typecheck(&goal, type_table);
+    
+    if (config.offsets) {
+        // Offset computation
+        type_table.offset_computation();
+    }
 }
 
 
@@ -390,17 +449,21 @@ void MainTypeCheckVisitor::visit(IdType *type) {
     for (Method *method : type->methods) {
         IdType *parent;
         Method *method_parent = lookup_method_parent(method->id, type, &parent);
-        if (method_parent && method_parent->ret_type != method->ret_type) {
+        if (method_parent) {
             bool match = params_match(method, method_parent);
-            // Note: If they _match exactly_ it is an error. Otherwise,
-            // it can be disambiguated through the parameters.
-            if (match) {
-                // TODO: We don't have actual `loc` available.
-                // TODO: Print the parameters of each.
-                location_t __loc = { 0 };
-                typecheck_error(__loc, "Method `", method->id, "` in class: `",
-                                type->id, "` can't override the method with the ",
-                                "same id in parent class: `", parent->id, "`");
+            if (method_parent->ret_type != method->ret_type) {
+                // Note: If they _match exactly_ it is an error. Otherwise,
+                // it can be disambiguated through the parameters.
+                if (match) {
+                    // TODO: We don't have actual `loc` available.
+                    // TODO: Print the parameters of each.
+                    location_t __loc = { 0 };
+                    typecheck_error(__loc, "Method `", method->id, "` in class: `",
+                                    type->id, "` can't override the method with the ",
+                                    "same id in parent class: `", parent->id, "`");
+                }
+            } else if (match) {
+                method->overrides = true;
             }
         }
         method->accept(this);
@@ -905,6 +968,7 @@ Method::Method(MethodDeclaration *method_decl) {
     param_len = method_decl->params.len;
     stmts = method_decl->stmts;
     ret_expr = method_decl->ret;
+    overrides = false;
 }
 
 void Method::print() const {

@@ -81,6 +81,10 @@ struct TypeTable {
 
     inline IdType** begin() { return type_table.begin(); }
     inline IdType** end() { return type_table.end(); }
+
+
+    void compute_and_print_offsets_for_type(IdType *type);
+    void offset_computation();
 };
 
 /* Pass 1 Visitor
@@ -220,6 +224,7 @@ struct Method : public TypeCheckCustomAllocation {
     size_t param_len;  // To know where params
     // end (and vars start).
     SerializedHashTable<Local*> locals;
+    bool overrides;  // if it overrides parent method
     
     // Copied from the MethodDeclaration
     Buf<Statement*> stmts;
@@ -235,11 +240,20 @@ struct Method : public TypeCheckCustomAllocation {
     }
 };
 
+enum class STATE {
+    UNRESOLVED,
+    RESOLVING,
+    RESOLVED
+};
+
 struct IdType : public Type {
-    HashTable<Local*> fields;
+    SerializedHashTable<Local*> fields;
     SerializedHashTable<Method*> methods;
     IdType *parent;
     const char *id;
+
+    size_t fields_end, methods_end;
+    STATE state;
 
     IdType() : id(NULL), parent(NULL) { }
     // For type we've not processed yet (so, we know

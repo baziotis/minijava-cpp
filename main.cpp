@@ -44,6 +44,7 @@ int main(int argc, char **argv) {
     config.log = false;
     config.ansi_style = false;
     config.unused = true;
+    config.offsets = false;
 
     for (int i = 1; i != argc; ++i) {
         if (!strcmp(argv[i], "-v")) {
@@ -54,6 +55,9 @@ int main(int argc, char **argv) {
         }
         if (!strcmp(argv[i], "-style")) {
             config.ansi_style = true;
+        }
+        if (!strcmp(argv[i], "-offsets")) {
+            config.offsets = true;
         }
     }
 
