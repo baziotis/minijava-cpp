@@ -42,7 +42,7 @@ int main(int argc, char **argv) {
     filename = argv[1];
 
     config.log = false;
-    config.ansi_style = false;
+    config.ansi_style = true;
     config.unused = true;
     config.offsets = false;
 
@@ -53,8 +53,8 @@ int main(int argc, char **argv) {
         if (!strcmp(argv[i], "-unused")) {
             config.unused = false;
         }
-        if (!strcmp(argv[i], "-style")) {
-            config.ansi_style = true;
+        if (!strcmp(argv[i], "-no-style")) {
+            config.ansi_style = false;
         }
         if (!strcmp(argv[i], "-offsets")) {
             config.offsets = true;
