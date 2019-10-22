@@ -99,9 +99,7 @@ void typecheck(Goal goal) {
     // happen if the types used are more than the type
     // declarations. See TypeTable.
     for (IdType *type : type_table.could_not_be_inserted) {
-        location_t __loc = { 0 };
-        // TODO: We don't have location
-        typecheck_error(__loc, "Type `", type->id, "` has not been ",
+        typecheck_error(type->loc, "Type `", type->id, "` has not been ",
                         "defined");
     }
     // Pass 2
@@ -116,7 +114,7 @@ void typecheck(Goal goal) {
 
 /* Declaration Visitor
  */
-IdType* DeclarationVisitor::id_to_type(const char *id) {
+IdType* DeclarationVisitor::id_to_type(const char *id, location_t loc) {
     // Check if it already exists.
     IdType *type = this->type_table.find(id);
     if (type) {
@@ -125,19 +123,20 @@ IdType* DeclarationVisitor::id_to_type(const char *id) {
     // Otherwise construct a new one and
     // save it in the table.
     type = new IdType(id);
+    type->loc = loc;
     this->type_table.insert(type->id, type);
     return type;
 }
 
 // This is member of the visitor so that we have
 // access to the type table.
-Type* DeclarationVisitor::typespec_to_type(Typespec tspec) {
+Type* DeclarationVisitor::typespec_to_type(Typespec tspec, location_t loc) {
     switch (tspec.kind) {
     case TYSPEC::UNDEFINED: assert(0);
     case TYSPEC::INT: return type_table.int_type;
     case TYSPEC::ARR: return type_table.int_arr_type;
     case TYSPEC::BOOL: return type_table.bool_type;
-    case TYSPEC::ID: return this->id_to_type(tspec.id);
+    case TYSPEC::ID: return this->id_to_type(tspec.id, loc);
     default: assert(0);
     }
 }
@@ -220,16 +219,20 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
                             "` has already been declared");
             return;
         } else {
+            // Overwrite the location. If the type is already inserted, its
+            // loc is its first usage.
+            type->loc = type_decl->loc;
             type->set_sizes(type_decl->vars.len, type_decl->methods.len);
         }
     } else {
         type = new IdType(type_decl->id, type_decl->vars.len, type_decl->methods.len);
+        type->loc = type_decl->loc;
         // TODO: insert it as undefined if it's not correct.
         this->type_table.insert(type->id, type);
     }
     // Handle inheritance
     if (type_decl->extends) {
-        IdType *parent = this->id_to_type(type_decl->extends);
+        IdType *parent = this->id_to_type(type_decl->extends, type_decl->loc);
         type->set_parent(parent);
     }
     for (LocalDeclaration *ld : type_decl->vars) {
@@ -309,7 +312,7 @@ Local *DeclarationVisitor::visit(LocalDeclaration *local_decl) {
     assert(!local_decl->is_undefined());
     print_indentation();
     debug_log(local_decl->loc, "LocalDeclaration: ", local_decl->id, "\n");
-    Type *type = typespec_to_type(local_decl->typespec);
+    Type *type = typespec_to_type(local_decl->typespec, local_decl->loc);
     Local *local = new Local(local_decl->id, type);
     return local;
 }
@@ -331,7 +334,7 @@ Method *DeclarationVisitor::visit(MethodDeclaration *method_decl) {
     debug_log(method_decl->loc, "MethodDeclaration: ", method_decl->id, "\n");
     Method *method = new Method(method_decl);
     assert(method);
-    method->ret_type = this->typespec_to_type(method_decl->typespec);
+    method->ret_type = this->typespec_to_type(method_decl->typespec, method_decl->ret->loc);
     for (LocalDeclaration *par : method_decl->params) {
         // We accept the param anyway. But in the case that there is
         // another param with the same name, we still insert this
@@ -342,8 +345,6 @@ Method *DeclarationVisitor::visit(MethodDeclaration *method_decl) {
             typecheck_error(par->loc, "Parameter `", par->id, "` is already defined",
                             " in method `", method_decl->id, "`");
             param->id = gen_id();
-        } else {
-            param->type->print();
         }
         // All params are considered initialized.
         param->initialized = true;
@@ -355,7 +356,6 @@ Method *DeclarationVisitor::visit(MethodDeclaration *method_decl) {
                             " in method `", method_decl->id, "`");
         } else {
             Var *v = var->accept(this);
-            v->type->print();
             method->locals.insert(v->id, v);
         }
     }
@@ -372,14 +372,11 @@ void MainTypeCheckVisitor::visit(Goal *goal) {
         if (type->is_defined()) {
             type->accept(this);
         } else {
-            // TODO: We don't have location
-            // TODO: This is a really bad message because the user
-            // does not know where it was used. As it seems, we already
-            // need to save one `loc` for IdTypes; where they were defined.
-            // But we may also store a buffer of `loc`s, the locations
-            // where the type was used.
-            location_t loc = { 0 };
-            typecheck_error(loc, "Type `", type->id, "` has not been ",
+            // type->loc is going to be the location of its first usage (Check
+            // id_to_type()). Ideally, we would like to have all the locations
+            // it was used, or some, but this will at least make this a not very
+            // bad message.
+            typecheck_error(type->loc, "Type `", type->id, "` has not been ",
                             "defined");
         }
     }
@@ -426,6 +423,17 @@ static bool params_match(Method *m1, Method *m2) {
     return true;
 }
 
+static void print_param_types(Method *method) {
+    size_t param_len = method->param_len;
+    for (size_t i = 0; i != param_len; ++i) {
+        Local *param = method->locals[i];
+        param->type->print();
+        if (i + 1 != param_len) {
+            printf(", ");
+        }
+    }
+}
+
 void MainTypeCheckVisitor::visit(IdType *type) {
     LOG_SCOPE;
     assert(type->is_IdType());
@@ -433,13 +441,11 @@ void MainTypeCheckVisitor::visit(IdType *type) {
     debug_print("MainTypeCheck::IdType %s\n", type->id);
 
     // Cyclic inheritance detection
-    IdType *temp = type;
-    while (temp->parent) {
-        temp = temp->parent;
-        if (temp == type) {
-            // TODO: We don't have actual `loc` available.
-            location_t loc = { 0 };
-            typecheck_error(loc, "Cyclic inheritance ",
+    IdType *runner = type;
+    while (runner->parent) {
+        runner = runner->parent;
+        if (runner == type) {
+            typecheck_error(type->loc, "Cyclic inheritance ",
                             "involving `", type->id, "`");
             break;
         }
@@ -455,12 +461,14 @@ void MainTypeCheckVisitor::visit(IdType *type) {
                 // Note: If they _match exactly_ it is an error. Otherwise,
                 // it can be disambiguated through the parameters.
                 if (match) {
-                    // TODO: We don't have actual `loc` available.
                     // TODO: Print the parameters of each.
-                    location_t __loc = { 0 };
-                    typecheck_error(__loc, "Method `", method->id, "` in class: `",
-                                    type->id, "` can't override the method with the ",
-                                    "same id in parent class: `", parent->id, "`");
+                    typecheck_error_no_ln(method->loc, method->id, "(");
+                    print_param_types(method);
+                    printf(") in `%s` can't override %s(", type->id, method_parent->id);
+                    print_param_types(method_parent);
+                    printf(") in `%s`\n", parent->id);
+                    printf("  Mismatch in return types `%s` and `%s`\n",
+                           method->ret_type->name(), method_parent->ret_type->name());
                 }
             } else if (match) {
                 method->overrides = true;
@@ -653,7 +661,6 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         debug_print("MainTypeCheck::ArrayAllocationExpression\n");
         assert(expr->e1);
         Type *index_type = expr->e1->accept(this);
-        index_type->print();
         if (index_type != this->type_table.int_type) {
             typecheck_error(expr->loc, "In array allocation expression, ",
                             "the index expression must be of integer type.");
@@ -810,7 +817,6 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         assert(type);
 
         if (type->kind == TY::UNDEFINED) {
-            type->print();
             typecheck_error(expr->loc, "In message send expression, Identifier: `",
                             expr->id, "` does not denote a known type");
             return this->type_table.undefined_type;
@@ -942,17 +948,17 @@ void Type::print() const {
     switch (this->kind) {
     case TY::UNDEFINED: {
         red_on();
-        debug_print("Undefined Type (Error)\n");
+        printf("Undefined Type (Error)\n");
         red_off();
     } break;
     case TY::INT: {
-        debug_print("Int\n");
+        printf("int");
     } break;
     case TY::ARR: {
-        debug_print("Array\n");
+        printf("int[]");
     } break;
     case TY::BOOL: {
-        debug_print("Boolean\n");
+        printf("boolean");
     } break;
     // Should be handled by virtual print()
     // in IdType.
@@ -968,6 +974,7 @@ Method::Method(MethodDeclaration *method_decl) {
     param_len = method_decl->params.len;
     stmts = method_decl->stmts;
     ret_expr = method_decl->ret;
+    loc = method_decl->loc;
     overrides = false;
 }
 

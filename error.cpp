@@ -152,6 +152,17 @@ static void typecheck_error(location_t __loc, Args... args) {
 }
 
 template <typename... Args> 
+static void typecheck_error_no_ln(location_t __loc, Args... args) {
+    log(__loc);
+    yellow_on();
+    bold_on();
+    log(" Semantic Error: ");
+    bold_off();
+    yellow_off();
+    log(args...);
+}
+
+template <typename... Args> 
 static void fatal_error(Args... args) {
 	printf("Fatal error: ");
 	log(args...);

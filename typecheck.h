@@ -3,6 +3,7 @@
 
 #include "alloc.h"
 #include "buf.h"
+#include "common.h"
 #include "hash_table.h"
 
 template<typename T> using HashTable = __HashTable<T, MEM::TYPECHECK>;
@@ -119,8 +120,8 @@ struct DeclarationVisitor {
 
     // Helper functions
     const char *gen_id();
-    IdType *id_to_type(const char *id);
-    Type *typespec_to_type(Typespec tspec);
+    IdType *id_to_type(const char *id, location_t loc);
+    Type *typespec_to_type(Typespec tspec, location_t loc);
 };
 
 /* Pass 2 Visitor
@@ -175,6 +176,7 @@ enum class TY {
 struct IdType;
 
 struct Type : public TypeCheckCustomAllocation {
+    location_t loc;
     TY kind;
 
     Type() : kind(TY::UNDEFINED) { }
@@ -224,6 +226,7 @@ struct Method : public TypeCheckCustomAllocation {
     size_t param_len;  // To know where params
     // end (and vars start).
     SerializedHashTable<Local*> locals;
+    location_t loc;
     bool overrides;  // if it overrides parent method
     
     // Copied from the MethodDeclaration

@@ -1,1 +1,2 @@
-ERROR_overriding.java: 0:  Semantic Error: Method `overriden` in class: `A` can't override the method with the same id in parent class: `B`
+ERROR_overriding.java: 13:  Semantic Error: overriden(int) in `A` can't override overriden(int) in `B`
+  Mismatch in return types `int` and `int[]`
