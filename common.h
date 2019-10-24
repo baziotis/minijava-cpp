@@ -13,6 +13,7 @@ struct config_t {
     bool ansi_style;
     bool unused;  // Issue message for unused types
     bool offsets;
+    bool codegen;
 };
 
 #endif

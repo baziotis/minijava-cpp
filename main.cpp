@@ -45,6 +45,7 @@ int main(int argc, char **argv) {
     config.ansi_style = true;
     config.unused = true;
     config.offsets = false;
+    config.codegen = false;
 
     for (int i = 1; i != argc; ++i) {
         if (!strcmp(argv[i], "-v")) {
@@ -58,6 +59,9 @@ int main(int argc, char **argv) {
         }
         if (!strcmp(argv[i], "-offsets")) {
             config.offsets = true;
+        }
+        if (!strcmp(argv[i], "-codegen")) {
+            config.codegen = true;
         }
     }
 

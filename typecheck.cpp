@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdio.h>
+#include <stdarg.h>
 
 #include "ast.h"
 #include "alloc.h"
@@ -461,7 +462,6 @@ void MainTypeCheckVisitor::visit(IdType *type) {
                 // Note: If they _match exactly_ it is an error. Otherwise,
                 // it can be disambiguated through the parameters.
                 if (match) {
-                    // TODO: Print the parameters of each.
                     typecheck_error_no_ln(method->loc, method->id, "(");
                     print_param_types(method);
                     printf(") in `%s` can't override %s(", type->id, method_parent->id);
@@ -478,11 +478,28 @@ void MainTypeCheckVisitor::visit(IdType *type) {
     }
     this->curr_class = NULL;
 }
+static long reg;
+
+static void set_reg(ssize_t v) {
+    reg = v - 1;
+}
+
+static long gen_reg() {
+    ++reg;
+    return reg;
+}
 
 void MainTypeCheckVisitor::visit(Method *method) {
     LOG_SCOPE;
     debug_print("MainTypeCheck::Method %s\n", method->id);
     this->curr_method = method;
+    ssize_t param_counter = 0;
+    for (Local *local : method->locals) {
+        local->reg = param_counter;
+        ++param_counter;
+    }
+    set_reg(param_counter);
+
     for (Statement *stmt : method->stmts) {
         stmt->accept(this);
     }
@@ -588,6 +605,118 @@ static bool deduce_method(Buf<Type*> expr_list, const char *method_id, IdType *c
     return false;
 }
 
+enum class LLVALUE {
+    UNDEFINED,
+    CONST,
+    REG,
+};
+
+struct llvalue_t {
+    LLVALUE kind;
+    union {
+        long reg;
+        int val;
+    };
+};
+
+void emit(const char *fmt, ...) {
+    if (config.log) {
+        va_list args;
+        va_start(args, fmt);
+        print_indentation();
+        vprintf(fmt, args);
+        va_end(args);
+    }
+}
+
+static llvalue_t llvm_op_const(int op, int val1, int val2) {
+    llvalue_t v;
+    v.kind = LLVALUE::CONST;
+    switch (op) {
+    case '+': v.val = val1 + val2; break;
+    case '-': v.val = val1 - val2; break;
+    case '*': v.val = val1 * val2; break;
+    case '<': v.val = val1 < val2; break;
+    case '&': v.val = val1 && val2; break;
+    default: assert(0);
+    }
+    return v;
+}
+
+static void print_llvalue(llvalue_t v) {
+    if (v.kind == LLVALUE::CONST) {
+        emit("%d", v.val);
+    } else {
+        emit("%%%ld", v.reg);
+    }
+}
+
+static llvalue_t llvm_op(int op, llvalue_t res1, llvalue_t res2) {
+    llvalue_t v;
+
+    if (res1.kind == LLVALUE::CONST && res2.kind == LLVALUE::CONST) {
+        return llvm_op_const(op, res1.val, res2.val);
+    }
+
+    v.kind = LLVALUE::REG;
+
+    long lhs = gen_reg();
+    v.reg = lhs;
+    emit("\t%%%ld = ", lhs);
+    switch (op) {
+    case '+': emit("add i32 "); break;
+    case '-': emit("sub i32 "); break;
+    case '*': emit("mul i32 "); break;
+    case '<': emit("icmp slt i32 "); break;
+    case '&': emit("and i1 "); break;
+    default: assert(0);
+    }
+    print_llvalue(res1);
+    emit(", ");
+    print_llvalue(res2);
+    emit("\n");
+    return v;
+}
+
+static llvalue_t llvm_getelementptr(llvalue_t ptr, llvalue_t index) {
+    //assert(ptr.kind == LLVALUE::REG);
+    llvalue_t v;
+    v.reg = gen_reg();
+    v.kind = LLVALUE::REG;
+    emit("\t%%%ld = getelementptr inbounds i32, i32* %%%ld, i64 ", v.reg, ptr.reg);
+    print_llvalue(index);
+    emit("\n");
+    return v;
+}
+
+static llvalue_t llvm_load(llvalue_t ptr) {
+    llvalue_t v;
+    v.reg = gen_reg();
+    v.kind = LLVALUE::REG;
+    emit("\t%%%ld = load i32, i32* %%%ld, align 4\n", v.reg, ptr.reg);
+    return v;
+}
+
+static llvalue_t llvm_sext(llvalue_t w) {
+    assert(w.kind == LLVALUE::REG);
+    llvalue_t v;
+    v.reg = gen_reg();
+    v.kind = LLVALUE::REG;
+    emit("\t%%%ld = sext i32 %%%ld to i64\n", v.reg, w.reg);
+    return v;
+}
+
+static llvalue_t not_llvalue(llvalue_t v) {
+    assert(v.kind == LLVALUE::REG);
+    long reg = gen_reg();
+    emit("\t%%%ld = icmp eq i1 %%%ld, 0\n", reg, v.reg);
+    v.reg = reg;
+    return v;
+}
+
+llvalue_t res;
+
+
 // IMPORTANT: DO NOT check if a type is undefined with equality test with
 // type_table.undefined_type. Check a note above on a full explanation.
 // A lot of types can have remained undefined (either because we never saw a definition
@@ -596,11 +725,10 @@ static bool deduce_method(Buf<Type*> expr_list, const char *method_id, IdType *c
 // an undefined type in general (e.g. an expression has undefined type, return
 // type_table.undefined_type as its type. The caller checks for equality
 // with type_table.undefined_type to see if it was valid).
-
 Type* MainTypeCheckVisitor::visit(Expression *expr) {
     LOG_SCOPE;
     assert(!expr->is_undefined());
-    
+
     // Used in binary expression cases.
     BinaryExpression *be = (BinaryExpression *) expr;
 
@@ -608,6 +736,8 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     case EXPR::BOOL_LIT:
     {
         debug_print("MainTypeCheck::BoolExpression\n");
+        res.kind = LLVALUE::CONST;
+        res.val = expr->lit_val;
         return this->type_table.bool_type;
     } break;
     case EXPR::ID:
@@ -616,6 +746,8 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         assert(this->curr_method);
         assert(this->curr_class);
         Local *local = lookup_local(expr->id, this->curr_method, this->curr_class);
+        res.kind = LLVALUE::REG;
+        res.reg = local->reg;
         if (!local) {
             typecheck_error(expr->loc, "In identifier expression, Identifier: `",
                             expr->id, "` does is not defined.");
@@ -631,6 +763,8 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     case EXPR::INT_LIT:
     {
         debug_print("MainTypeCheck::IntegerExpression\n");
+        res.kind = LLVALUE::CONST;
+        res.val = expr->lit_val;
         return this->type_table.int_type;
     } break;
     case EXPR::THIS:
@@ -673,11 +807,17 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         debug_print("MainTypeCheck::LengthExpression\n");
         assert(expr->e1);
         Type *arr = expr->e1->accept(this);
+        llvalue_t ptr = res;
         if (arr != this->type_table.int_arr_type) {
             typecheck_error(expr->loc, "In array length expression, ",
                             "the dereferenced id must be of integer array type.");
             return this->type_table.undefined_type;
         }
+        // Codegen
+        assert(ptr.kind == LLVALUE::REG);
+        // Just loading a 4-byte value from `the` ptr will give us the length
+        // as the first 4 bytes of arrays are the length.
+        res = llvm_load(ptr);
         return this->type_table.int_type;
     } break;
     case EXPR::NOT:
@@ -685,10 +825,17 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         debug_print("MainTypeCheck::NotExpression\n");
         assert(expr->e1);
         Type *ty = expr->e1->accept(this);
+        llvalue_t res1 = res;
         if (ty != this->type_table.bool_type) {
             typecheck_error(expr->loc, "Bad operand for unary operator `!`. Operand ",
                             "of boolean type was expected, found: `", ty->name(), "`");
             return this->type_table.undefined_type;
+        }
+        if (res1.kind == LLVALUE::CONST) {
+            res.kind = LLVALUE::CONST;
+            res.val = !res1.val;
+        } else {
+            res = not_llvalue(res);
         }
         return this->type_table.bool_type;
     } break;
@@ -701,7 +848,9 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         assert(be->e1);
         assert(be->e2);
         Type *ty1 = be->e1->accept(this);
+        llvalue_t res1 = res;
         Type *ty2 = be->e2->accept(this);
+        llvalue_t res2 = res;
         bool is_correct = true;
 
         if (ty1 != this->type_table.bool_type) {
@@ -715,6 +864,8 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             is_correct = false;
         }
         if (is_correct) {
+            // Codegen
+            res = llvm_op('&', res1, res2);
             return this->type_table.bool_type;
         }
         return this->type_table.undefined_type;
@@ -726,7 +877,9 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         assert(be->e1);
         assert(be->e2);
         Type *ty1 = be->e1->accept(this);
+        llvalue_t res1 = res;
         Type *ty2 = be->e2->accept(this);
+        llvalue_t res2 = res;
         bool is_correct = true;
 
         if (ty1 != this->type_table.int_type) {
@@ -740,6 +893,8 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             is_correct = false;
         }
         if (is_correct) {
+            // Codegen
+            res = llvm_op('<', res1, res2);
             return this->type_table.bool_type;
         }
         return this->type_table.undefined_type;
@@ -751,7 +906,9 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         assert(be->e1);
         assert(be->e2);
         Type *ty1 = be->e1->accept(this);
+        llvalue_t res1 = res;
         Type *ty2 = be->e2->accept(this);
+        llvalue_t res2 = res;
         bool is_correct = true;
 
         int op;
@@ -779,6 +936,8 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             is_correct = false;
         }
         if (is_correct) {
+            // Codegen
+            res = llvm_op(op, res1, res2);
             return this->type_table.int_type;
         }
         return this->type_table.undefined_type;
@@ -789,7 +948,9 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         assert(be->e1);
         assert(be->e2);
         Type *ty1 = be->e1->accept(this);
+        llvalue_t ptr = res;
         Type *ty2 = be->e2->accept(this);
+        llvalue_t index = res;
         bool is_correct = true;
 
         if (ty1 != this->type_table.int_arr_type) {
@@ -805,6 +966,20 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             is_correct = false;
         }
         if (is_correct) {
+            // You can't have a constant of pointer value.
+            //assert(ptr.kind == LLVALUE::REG);
+            llvalue_t el;
+            if (index.kind == LLVALUE::CONST) {
+                // Take into consideration the 4 bytes of the length.
+                index.val += 4;
+                ptr = llvm_getelementptr(ptr, index);
+            } else {
+                llvalue_t res2 = index;
+                ptr = llvm_getelementptr(ptr, {LLVALUE::CONST, 4});
+                index = llvm_sext(index);
+            }
+            ptr = llvm_getelementptr(ptr, index);
+            res = llvm_load(ptr);
             return this->type_table.int_type;
         }
         return this->type_table.undefined_type;

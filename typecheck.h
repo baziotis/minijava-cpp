@@ -126,6 +126,8 @@ struct DeclarationVisitor {
 
 /* Pass 2 Visitor
  */
+struct expr_result_t;
+
 struct MainTypeCheckVisitor {
     TypeTable type_table;
     Method *curr_method;
@@ -204,6 +206,7 @@ struct Type : public TypeCheckCustomAllocation {
 struct Local  : public TypeCheckCustomAllocation {
     const char *id;
     Type *type;
+    long reg;
     bool initialized;
 
     Local() : id(NULL), initialized(false) { }
