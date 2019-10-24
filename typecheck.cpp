@@ -489,6 +489,26 @@ static long gen_reg() {
     return reg;
 }
 
+// True if `rhs` is child of `lhs` (or they're equal)
+static bool compatible_types(Type *lhs, Type *rhs) {
+    if (lhs == rhs) return true;
+    IdType *ty1 = lhs->is_IdType();
+    IdType *ty2 = rhs->is_IdType();
+    if (ty1 && ty2) {
+        IdType *runner = ty2;
+        while (runner->parent) {
+            runner = runner->parent;
+            if (runner == ty1) {
+                return true;
+            }
+            // Cyclic inheritance, we issue error elsewhere.
+            if (runner == ty2) break;
+        }
+        return false;
+    }
+    return false;
+}
+
 void MainTypeCheckVisitor::visit(Method *method) {
     LOG_SCOPE;
     debug_print("MainTypeCheck::Method %s\n", method->id);
@@ -510,7 +530,7 @@ void MainTypeCheckVisitor::visit(Method *method) {
         Type *ret_type = method->ret_expr->accept(this);
         assert(ret_type);
         assert(method->ret_type);
-        if (ret_type != method->ret_type) {
+        if (!compatible_types(method->ret_type, ret_type)) {
             location_t loc_here = method->ret_expr->loc;
             const char *name = ret_type->name();
             const char *name2 = method->ret_type->name();
@@ -547,26 +567,6 @@ static Local *lookup_local(const char *id, Method *method, IdType *cls) {
         if (runner == cls) break;
     }
     return NULL;
-}
-
-// True if `rhs` is child of `lhs` (or they're equal)
-static bool compatible_types(Type *lhs, Type *rhs) {
-    if (lhs == rhs) return true;
-    IdType *ty1 = lhs->is_IdType();
-    IdType *ty2 = rhs->is_IdType();
-    if (ty1 && ty2) {
-        IdType *runner = ty2;
-        while (runner->parent) {
-            runner = runner->parent;
-            if (runner == ty1) {
-                return true;
-            }
-            // Cyclic inheritance, we issue error elsewhere.
-            if (runner == ty2) break;
-        }
-        return false;
-    }
-    return false;
 }
 
 static bool check_expr_list_against_method(Buf<Type*> expr_list, Method *method) {
