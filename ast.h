@@ -73,10 +73,12 @@ struct Expression : public ParsingPersistentAllocation {
         return kind == EXPR::UNDEFINED;
     }
 
+    // Pass 1
     Type *accept(DeclarationVisitor *v) {
         assert(0);
     }
 
+    // Pass 2
     Type* accept(MainTypeCheckVisitor *v) {
         return v->visit(this);
     }

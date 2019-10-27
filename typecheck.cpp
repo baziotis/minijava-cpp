@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <string.h>
 
 #include "ast.h"
 #include "alloc.h"
@@ -489,6 +490,12 @@ static long gen_reg() {
     return reg;
 }
 
+static long gen_lbl() {
+    static long lbl = 0;
+    ++lbl;
+    return lbl;
+}
+
 // True if `rhs` is child of `lhs` (or they're equal)
 static bool compatible_types(Type *lhs, Type *rhs) {
     if (lhs == rhs) return true;
@@ -513,7 +520,9 @@ void MainTypeCheckVisitor::visit(Method *method) {
     LOG_SCOPE;
     debug_print("MainTypeCheck::Method %s\n", method->id);
     this->curr_method = method;
-    ssize_t param_counter = 0;
+    // We're starting from 1, because register 0
+    // is always reserved for the 'this' pointer.
+    ssize_t param_counter = 1;
     for (Local *local : method->locals) {
         local->reg = param_counter;
         ++param_counter;
@@ -542,6 +551,9 @@ void MainTypeCheckVisitor::visit(Method *method) {
         }
     }
     this->curr_method = NULL;
+
+    // Free arena for labels
+    deallocate(MEM::LABEL);
 }
 
 static Local *lookup_local(const char *id, Method *method, IdType *cls) {
@@ -617,10 +629,76 @@ struct llvalue_t {
         long reg;
         int val;
     };
+
+    llvalue_t() { }
+
+
+    llvalue_t(bool _val) {
+        kind = LLVALUE::CONST;
+        val = (int) _val;
+    }
+
+    llvalue_t(LLVALUE _kind, int _val) {
+        assert(_kind == LLVALUE::CONST);
+        kind = _kind;
+        val = _val;
+    }
+    llvalue_t(LLVALUE _kind, long _reg) {
+        assert(_kind == LLVALUE::REG);
+        kind = _kind;
+        reg = _reg;
+    }
 };
 
+struct llvm_label_t {
+    const char *lbl;
+    bool generated;
+
+    llvm_label_t() : lbl(NULL), generated(false) { }
+
+    llvm_label_t(const char *_lbl) {
+        // Assume that the label is string literal
+        lbl = _lbl;
+        generated = false;
+    }
+
+    void construct(const char *_lbl, long num = -1) {
+        assert(!generated);
+        assert(_lbl);
+        assert(lbl == NULL);
+        if (num == -1) {
+            long num = gen_lbl();
+        }
+
+        // Labels are allocated in MEM::LABEL arena.
+        // This arena is freed when we finish a method.
+
+        size_t len = strlen(_lbl);
+        // Allocate space that will surely be enough.
+        size_t alloc_size = len + 20;
+        char *p = (char *) allocate(alloc_size, MEM::LABEL);
+        // sprintf might be slow.
+        sprintf(p, "%s%ld", _lbl, num);
+        lbl = (const char *) p;
+    }
+};
+
+struct and_lbl_pair_t {
+    llvm_label_t start;
+    llvm_label_t end;
+
+    void construct() {
+        long num = gen_lbl();
+        start.construct("and", num);
+        end.construct("and_end", num);
+    }
+};
+
+
+llvm_label_t curr_lbl;
+
 void emit(const char *fmt, ...) {
-    if (config.log) {
+    if (config.codegen) {
         va_list args;
         va_start(args, fmt);
         print_indentation();
@@ -643,9 +721,24 @@ static llvalue_t llvm_op_const(int op, int val1, int val2) {
     return v;
 }
 
-static void print_llvalue(llvalue_t v) {
-    if (v.kind == LLVALUE::CONST) {
+static void print_const_llvalue(llvalue_t v, bool its_bool) {
+    assert(v.kind == LLVALUE::CONST);
+    if (its_bool) {
+        if (v.val == 0) {
+            emit("false");
+        } else if (v.val == 1) {
+            emit("true");
+        } else {
+            assert(0 && "Boolean llvalues can only have value 0 or 1");
+        }
+    } else {
         emit("%d", v.val);
+    }
+}
+
+static void print_llvalue(llvalue_t v, bool its_bool = false) {
+    if (v.kind == LLVALUE::CONST) {
+        print_const_llvalue(v, its_bool);
     } else {
         emit("%%%ld", v.reg);
     }
@@ -683,7 +776,7 @@ static llvalue_t llvm_getelementptr(llvalue_t ptr, llvalue_t index) {
     llvalue_t v;
     v.reg = gen_reg();
     v.kind = LLVALUE::REG;
-    emit("\t%%%ld = getelementptr inbounds i32, i32* %%%ld, i64 ", v.reg, ptr.reg);
+    emit("\t%%%ld = getelementptr inbounds i32, i32* %%%ld, i32 ", v.reg, ptr.reg);
     print_llvalue(index);
     emit("\n");
     return v;
@@ -697,15 +790,6 @@ static llvalue_t llvm_load(llvalue_t ptr) {
     return v;
 }
 
-static llvalue_t llvm_sext(llvalue_t w) {
-    assert(w.kind == LLVALUE::REG);
-    llvalue_t v;
-    v.reg = gen_reg();
-    v.kind = LLVALUE::REG;
-    emit("\t%%%ld = sext i32 %%%ld to i64\n", v.reg, w.reg);
-    return v;
-}
-
 static llvalue_t not_llvalue(llvalue_t v) {
     assert(v.kind == LLVALUE::REG);
     long reg = gen_reg();
@@ -714,7 +798,60 @@ static llvalue_t not_llvalue(llvalue_t v) {
     return v;
 }
 
+static llvalue_t llvm_calloc(int sz) {
+    llvalue_t v;
+    v.kind = LLVALUE::REG;
+    v.reg = gen_reg();
+    emit("\t%%%ld = call noalias i8* @calloc(i64 1, i64 %d)\n", v.reg, sz);
+    return v;
+}
+
+static void llvm_gen_lbl(llvm_label_t l) {
+    assert(!l.generated);
+    emit("%s:\n", l.lbl);
+    l.generated = true;
+    curr_lbl = l;
+}
+
+static void llvm_branch_cond(llvalue_t cond, llvm_label_t l1, llvm_label_t l2) {
+    emit("\tbr i1 ");
+    print_llvalue(cond);
+    emit(", label %s, label %s\n\n", l1.lbl, l2.lbl);
+}
+
+static void llvm_branch(llvm_label_t l) {
+    emit("\tbr %s\n\n", l.lbl);
+}
+
+static llvalue_t llvm_and_phi(llvm_label_t l1, llvalue_t v1, llvm_label_t l2) {
+    llvalue_t v;
+    v.kind = LLVALUE::REG;
+    v.reg = gen_reg();
+    // We only need boolean values
+    assert(v1.kind == LLVALUE::REG || (v1.val == 0 || v1.val == 1));
+    emit("\t%%%ld = phi i1 [ false, %s ], [ ", v.reg, l1.lbl);
+    print_llvalue(v1);
+    emit(", %s]\n", l2.lbl);
+    return v;
+}
+
 llvalue_t res;
+
+
+// Only used for EXPR::AND
+static Type *typecheck_and_helper(bool is_correct, Expression *expr,
+                                  MainTypeCheckVisitor *v, Type *boolty, Type *undefinedty) {
+    Type *ty = expr->accept(v);
+    if (ty != boolty) {
+        typecheck_error(expr->loc, "Bad right operand for binary operator `&&`. Operand ",
+                        "of boolean type was expected, found: `", ty->name(), "`");
+        is_correct = false;
+    }
+    if (is_correct) {
+        return boolty;
+    }
+    return undefinedty;
+}
 
 
 // IMPORTANT: DO NOT check if a type is undefined with equality test with
@@ -762,7 +899,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     } break;
     case EXPR::INT_LIT:
     {
-        debug_print("MainTypeCheck::IntegerExpression\n");
+        debug_print("MainTypeCheck::IntegerExpression: %d\n", expr->lit_val);
         res.kind = LLVALUE::CONST;
         res.val = expr->lit_val;
         return this->type_table.int_type;
@@ -770,6 +907,12 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     case EXPR::THIS:
     {
         debug_print("MainTypeCheck::ThisExpression\n");
+        // Assume that every function has as a first argument
+        // (so, register %0) a pointer to the calling class.
+        // Assume also that this pointer is typed properly,
+        // so no need to bitcast.
+        res.kind = LLVALUE::REG;
+        res.reg = 0;
         assert(this->curr_class);
         return this->curr_class;
     } break;
@@ -844,31 +987,99 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
 
     case EXPR::AND:
     {
+        // TODO: REMOVE THAT
+        static int __test = false;
+
+        if (!__test) {
+            curr_lbl = llvm_label_t("%0");
+            __test = true;
+        }
+
         debug_print("MainTypeCheck::AndExpression\n");
         assert(be->e1);
         assert(be->e2);
         Type *ty1 = be->e1->accept(this);
         llvalue_t res1 = res;
-        Type *ty2 = be->e2->accept(this);
-        llvalue_t res2 = res;
         bool is_correct = true;
+
+        llvm_label_t origin_lbl = curr_lbl;
 
         if (ty1 != this->type_table.bool_type) {
             typecheck_error(expr->loc, "Bad left operand for binary operator `&&`. Operand ",
                             "of boolean type was expected, found: `", ty1->name(), "`");
             is_correct = false;
         }
-        if (ty2 != this->type_table.bool_type) {
-            typecheck_error(expr->loc, "Bad right operand for binary operator `&&`. Operand ",
-                            "of boolean type was expected, found: `", ty2->name(), "`");
-            is_correct = false;
+
+        // TODO: Currently, we can do constant-folding on the left expression. If it
+        // is constant, we will know when it returns and it won't have emitted anything.
+        // If not, it will have emitted and again we will know.
+        // _However_, we can't constant fold the right expression. This is because
+        // if it is not, we have to print a branch _before_ we process the right expression.
+        // Possible solutions:
+        // 1) The current one: constant fold only the left plus check if the right
+        //    one is a trivial constant expression that we can know if it is constant
+        //    a priori. Those are the BOOL_LIT expressions.
+        // 2) Provide the ability to codegen in a buffer. That way, we don't print, but
+        //    we output to the buffer that we can then use accordingly when we know
+        //    what kind of expr we have.
+        // 3) Disable the `config.codegen` (so, disable printing) and process the expr,
+        //    learn if it is constant and if it's not, re-process it. That may be
+        //    faster than it seems (and faster than 2) ).
+
+        // Note: Read carefully the following code, it's crafted subtly.
+
+        bool do_branching = true;
+        if (res1.kind == LLVALUE::CONST && res1.val == 0) {
+            // Constant left `false` value, don't run (i.e. codegen) the right expression.
+            // `res` remains and is the result of the left expr.
+            // We still have to type-check the right expr.
+            if (res1.val == 0) {
+                // Turn off the codegen (if it was on), we only need to typecheck.
+                bool codegen = config.codegen;
+                config.codegen = false;
+                Type *ty = typecheck_and_helper(is_correct, be->e2, this,
+                                                this->type_table.bool_type,
+                                                this->type_table.undefined_type);
+                // We're done, restore it.
+                config.codegen = codegen;
+                // Restore
+                res = res1;
+                return ty;
+            } else {
+                // The result of the expr will be what the right expr is
+                // and will be generated with the code following. No need
+                // to do branching, phi etc.
+                do_branching = false;
+            }
         }
-        if (is_correct) {
-            // Codegen
-            res = llvm_op('&', res1, res2);
-            return this->type_table.bool_type;
+        
+        and_lbl_pair_t and_lbls;
+        if (do_branching) {
+            // TODO: Here we need something like "insert BB", "insert BB after"
+            // like LDC has.
+            and_lbls.construct();
+            
+            // To reach this point, certainly res1.kind == LLVALUE::REG.
+            //assert(res1.kind == LLVALUE::REG);
+            llvm_branch_cond(res1, and_lbls.start, and_lbls.end);
+            llvm_gen_lbl(and_lbls.start);
         }
-        return this->type_table.undefined_type;
+
+        Type *ret_ty = typecheck_and_helper(is_correct, be->e2, this,
+                                    this->type_table.bool_type,
+                                    this->type_table.undefined_type);
+        llvm_label_t save_curr_lbl = curr_lbl;
+        
+        if (do_branching) {
+            llvm_branch(and_lbls.end);
+
+            llvm_gen_lbl(and_lbls.end);
+            res = llvm_and_phi(origin_lbl, res, save_curr_lbl);
+        } /* else {
+            `res` has the value generated when type-checking to receive `ret_ty`.
+        }
+        */
+        return ret_ty;
     } break;
 
     case EXPR::CMP:
@@ -905,11 +1116,6 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     {
         assert(be->e1);
         assert(be->e2);
-        Type *ty1 = be->e1->accept(this);
-        llvalue_t res1 = res;
-        Type *ty2 = be->e2->accept(this);
-        llvalue_t res2 = res;
-        bool is_correct = true;
 
         int op;
         if (be->kind == EXPR::PLUS) {
@@ -922,6 +1128,14 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             op = '*';
             debug_print("MainTypeCheck::TimesExpression\n");
         }
+
+        Type *ty1 = be->e1->accept(this);
+        llvalue_t res1 = res;
+        Type *ty2 = be->e2->accept(this);
+        llvalue_t res2 = res;
+        bool is_correct = true;
+
+
 
         if (ty1 != this->type_table.int_type) {
             typecheck_error(expr->loc, "Bad left operand for binary operator `", (char)op ,
@@ -966,17 +1180,16 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             is_correct = false;
         }
         if (is_correct) {
+            // TODO - IMPORTANT(stefanos): Bounds-checking.
+
             // You can't have a constant of pointer value.
             //assert(ptr.kind == LLVALUE::REG);
             llvalue_t el;
             if (index.kind == LLVALUE::CONST) {
                 // Take into consideration the 4 bytes of the length.
                 index.val += 4;
-                ptr = llvm_getelementptr(ptr, index);
             } else {
-                llvalue_t res2 = index;
-                ptr = llvm_getelementptr(ptr, {LLVALUE::CONST, 4});
-                index = llvm_sext(index);
+                index = llvm_op('+', index, {LLVALUE::CONST, 4});
             }
             ptr = llvm_getelementptr(ptr, index);
             res = llvm_load(ptr);
