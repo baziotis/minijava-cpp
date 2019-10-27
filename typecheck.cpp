@@ -694,8 +694,12 @@ struct and_lbl_pair_t {
     }
 };
 
+struct {
+    llvm_label_t curr_lbl;
+    llvalue_t llval;
+    Type *ty;
+} __expr_context;
 
-llvm_label_t curr_lbl;
 
 void emit(const char *fmt, ...) {
     if (config.codegen) {
@@ -810,7 +814,7 @@ static void llvm_gen_lbl(llvm_label_t l) {
     assert(!l.generated);
     emit("%s:\n", l.lbl);
     l.generated = true;
-    curr_lbl = l;
+    __expr_context.curr_lbl = l;
 }
 
 static void llvm_branch_cond(llvalue_t cond, llvm_label_t l1, llvm_label_t l2) {
@@ -873,8 +877,8 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     case EXPR::BOOL_LIT:
     {
         debug_print("MainTypeCheck::BoolExpression\n");
-        res.kind = LLVALUE::CONST;
-        res.val = expr->lit_val;
+        __expr_context.llval.kind = LLVALUE::CONST;
+        __expr_context.llval.val = expr->lit_val;
         return this->type_table.bool_type;
     } break;
     case EXPR::ID:
@@ -883,8 +887,8 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         assert(this->curr_method);
         assert(this->curr_class);
         Local *local = lookup_local(expr->id, this->curr_method, this->curr_class);
-        res.kind = LLVALUE::REG;
-        res.reg = local->reg;
+        __expr_context.llval.kind = LLVALUE::REG;
+        __expr_context.llval.reg = local->reg;
         if (!local) {
             typecheck_error(expr->loc, "In identifier expression, Identifier: `",
                             expr->id, "` does is not defined.");
@@ -900,8 +904,8 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     case EXPR::INT_LIT:
     {
         debug_print("MainTypeCheck::IntegerExpression: %d\n", expr->lit_val);
-        res.kind = LLVALUE::CONST;
-        res.val = expr->lit_val;
+        __expr_context.llval.kind = LLVALUE::CONST;
+        __expr_context.llval.val = expr->lit_val;
         return this->type_table.int_type;
     } break;
     case EXPR::THIS:
@@ -911,12 +915,12 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         // (so, register %0) a pointer to the calling class.
         // Assume also that this pointer is typed properly,
         // so no need to bitcast.
-        res.kind = LLVALUE::REG;
-        res.reg = 0;
+        __expr_context.llval.kind = LLVALUE::REG;
+        __expr_context.llval.reg = 0;
         assert(this->curr_class);
         return this->curr_class;
     } break;
-    case EXPR::ALLOC:
+    case EXPR::ALLOC: // TODO: Codegen
     {
         debug_print("MainTypeCheck::AllocationExpression\n");
         // Find the type of the Identifier.
@@ -933,7 +937,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         }
         return type;
     } break;
-    case EXPR::ARR_ALLOC:
+    case EXPR::ARR_ALLOC: // TODO: Codegen
     {
         debug_print("MainTypeCheck::ArrayAllocationExpression\n");
         assert(expr->e1);
@@ -950,7 +954,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         debug_print("MainTypeCheck::LengthExpression\n");
         assert(expr->e1);
         Type *arr = expr->e1->accept(this);
-        llvalue_t ptr = res;
+        llvalue_t ptr = __expr_context.llval;
         if (arr != this->type_table.int_arr_type) {
             typecheck_error(expr->loc, "In array length expression, ",
                             "the dereferenced id must be of integer array type.");
@@ -960,7 +964,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         assert(ptr.kind == LLVALUE::REG);
         // Just loading a 4-byte value from `the` ptr will give us the length
         // as the first 4 bytes of arrays are the length.
-        res = llvm_load(ptr);
+        __expr_context.llval = llvm_load(ptr);
         return this->type_table.int_type;
     } break;
     case EXPR::NOT:
@@ -968,17 +972,17 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         debug_print("MainTypeCheck::NotExpression\n");
         assert(expr->e1);
         Type *ty = expr->e1->accept(this);
-        llvalue_t res1 = res;
+        llvalue_t res = __expr_context.llval;
         if (ty != this->type_table.bool_type) {
             typecheck_error(expr->loc, "Bad operand for unary operator `!`. Operand ",
                             "of boolean type was expected, found: `", ty->name(), "`");
             return this->type_table.undefined_type;
         }
-        if (res1.kind == LLVALUE::CONST) {
-            res.kind = LLVALUE::CONST;
-            res.val = !res1.val;
+        if (res.kind == LLVALUE::CONST) {
+            __expr_context.llval.kind = LLVALUE::CONST;
+            __expr_context.llval.val = !res.val;
         } else {
-            res = not_llvalue(res);
+            __expr_context.llval = not_llvalue(res);
         }
         return this->type_table.bool_type;
     } break;
@@ -991,7 +995,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         static int __test = false;
 
         if (!__test) {
-            curr_lbl = llvm_label_t("%0");
+            __expr_context.curr_lbl = llvm_label_t("%0");
             __test = true;
         }
 
@@ -999,10 +1003,10 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         assert(be->e1);
         assert(be->e2);
         Type *ty1 = be->e1->accept(this);
-        llvalue_t res1 = res;
+        llvalue_t res = __expr_context.llval;
         bool is_correct = true;
 
-        llvm_label_t origin_lbl = curr_lbl;
+        llvm_label_t origin_lbl = __expr_context.curr_lbl;
 
         if (ty1 != this->type_table.bool_type) {
             typecheck_error(expr->loc, "Bad left operand for binary operator `&&`. Operand ",
@@ -1029,11 +1033,11 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         // Note: Read carefully the following code, it's crafted subtly.
 
         bool do_branching = true;
-        if (res1.kind == LLVALUE::CONST && res1.val == 0) {
+        if (res.kind == LLVALUE::CONST && res.val == 0) {
             // Constant left `false` value, don't run (i.e. codegen) the right expression.
             // `res` remains and is the result of the left expr.
             // We still have to type-check the right expr.
-            if (res1.val == 0) {
+            if (res.val == 0) {
                 // Turn off the codegen (if it was on), we only need to typecheck.
                 bool codegen = config.codegen;
                 config.codegen = false;
@@ -1043,7 +1047,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
                 // We're done, restore it.
                 config.codegen = codegen;
                 // Restore
-                res = res1;
+                __expr_context.llval = res;
                 return ty;
             } else {
                 // The result of the expr will be what the right expr is
@@ -1061,22 +1065,24 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             
             // To reach this point, certainly res1.kind == LLVALUE::REG.
             //assert(res1.kind == LLVALUE::REG);
-            llvm_branch_cond(res1, and_lbls.start, and_lbls.end);
+            llvm_branch_cond(res, and_lbls.start, and_lbls.end);
             llvm_gen_lbl(and_lbls.start);
         }
 
         Type *ret_ty = typecheck_and_helper(is_correct, be->e2, this,
                                     this->type_table.bool_type,
                                     this->type_table.undefined_type);
-        llvm_label_t save_curr_lbl = curr_lbl;
+        llvm_label_t save_curr_lbl = __expr_context.curr_lbl;
         
         if (do_branching) {
             llvm_branch(and_lbls.end);
 
             llvm_gen_lbl(and_lbls.end);
-            res = llvm_and_phi(origin_lbl, res, save_curr_lbl);
+            __expr_context.llval = llvm_and_phi(origin_lbl,
+                                                __expr_context.llval, save_curr_lbl);
         } /* else {
-            `res` has the value generated when type-checking to receive `ret_ty`.
+            `__expr_context.llval` has the value generated
+            when type-checking to receive `ret_ty`.
         }
         */
         return ret_ty;
@@ -1088,9 +1094,9 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         assert(be->e1);
         assert(be->e2);
         Type *ty1 = be->e1->accept(this);
-        llvalue_t res1 = res;
+        llvalue_t res1 = __expr_context.llval;
         Type *ty2 = be->e2->accept(this);
-        llvalue_t res2 = res;
+        llvalue_t res2 = __expr_context.llval;
         bool is_correct = true;
 
         if (ty1 != this->type_table.int_type) {
@@ -1105,7 +1111,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         }
         if (is_correct) {
             // Codegen
-            res = llvm_op('<', res1, res2);
+            __expr_context.llval = llvm_op('<', res1, res2);
             return this->type_table.bool_type;
         }
         return this->type_table.undefined_type;
@@ -1130,9 +1136,9 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         }
 
         Type *ty1 = be->e1->accept(this);
-        llvalue_t res1 = res;
+        llvalue_t res1 = __expr_context.llval;
         Type *ty2 = be->e2->accept(this);
-        llvalue_t res2 = res;
+        llvalue_t res2 = __expr_context.llval;
         bool is_correct = true;
 
 
@@ -1151,7 +1157,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         }
         if (is_correct) {
             // Codegen
-            res = llvm_op(op, res1, res2);
+            __expr_context.llval = llvm_op(op, res1, res2);
             return this->type_table.int_type;
         }
         return this->type_table.undefined_type;
@@ -1162,9 +1168,9 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         assert(be->e1);
         assert(be->e2);
         Type *ty1 = be->e1->accept(this);
-        llvalue_t ptr = res;
+        llvalue_t ptr = __expr_context.llval;
         Type *ty2 = be->e2->accept(this);
-        llvalue_t index = res;
+        llvalue_t index = __expr_context.llval;
         bool is_correct = true;
 
         if (ty1 != this->type_table.int_arr_type) {
@@ -1192,7 +1198,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
                 index = llvm_op('+', index, {LLVALUE::CONST, 4});
             }
             ptr = llvm_getelementptr(ptr, index);
-            res = llvm_load(ptr);
+            __expr_context.llval = llvm_load(ptr);
             return this->type_table.int_type;
         }
         return this->type_table.undefined_type;
