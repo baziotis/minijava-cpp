@@ -719,6 +719,7 @@ static llvalue_t llvm_op(int op, llvalue_t res1, llvalue_t res2) {
 }
 
 static llvalue_t llvm_getelementptr(llvalue_t ptr, llvalue_t index) {
+    // TODO: Uncomment
     //assert(ptr.kind == LLVALUE::REG);
     llvalue_t v;
     v.reg = gen_reg();
@@ -781,7 +782,8 @@ static llvalue_t llvm_and_phi(llvm_label_t l1, llvalue_t v1, llvm_label_t l2) {
     v.kind = LLVALUE::REG;
     v.reg = gen_reg();
     // We only need boolean values
-    assert(v1.kind == LLVALUE::REG || (v1.val == 0 || v1.val == 1));
+    // TODO: Uncomment
+    //assert(v1.kind == LLVALUE::REG || (v1.val == 0 || v1.val == 1));
     print_codegen_indentation();
     emit("%%%ld = phi i1 [ false, %s ], [ ", v.reg, l1.lbl);
     print_llvalue(v1);
@@ -1002,13 +1004,14 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             }
         }
         
-        and_lbl_pair_t and_lbls;
+        lbl_pair_t and_lbls;
         if (do_branching) {
             // TODO: Here we need something like "insert BB", "insert BB after"
             // like LDC has.
-            and_lbls.construct();
+            and_lbls.construct("and");
             
             // To reach this point, certainly res1.kind == LLVALUE::REG.
+            // TODO: Uncomment
             //assert(res1.kind == LLVALUE::REG);
             llvm_branch_cond(res, and_lbls.start, and_lbls.end);
             llvm_gen_lbl(and_lbls.start);
@@ -1130,16 +1133,49 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
                             ty1->name(), "`");
             is_correct = false;
         }
+        if (index.kind == LLVALUE::CONST && index.val < 0) {
+            typecheck_error(expr->loc, "Index with constant value: ", index.val,
+                            " is out of bounds (negative)");
+            is_correct = false;
+        }
         if (is_correct) {
-            // TODO - IMPORTANT(stefanos): Bounds-checking.
+            // Check if index < len
+
+            // Note: The length is never constant, so we can't
+            // fully constant-fold this even if the index is constant (
+            // we only partially constant-fold this in that the constant
+            // value is used inline).
+            lbl_pair_t lbls_len_check;
+            lbls_len_check.construct("bounds_len");
+            llvalue_t len = llvm_load(ptr);
+            llvalue_t cmp_res = llvm_op('<', index, len);
+            // Mind the order of labels
+            llvm_branch_cond(cmp_res, lbls_len_check.end, lbls_len_check.start);
+
+            llvm_gen_lbl(lbls_len_check.start);
+            // TODO: Do something better
+            emit("    EXIT\n\n");
+            llvm_gen_lbl(lbls_len_check.end);
+
 
             // You can't have a constant of pointer value.
+            // TODO: Uncomment
             //assert(ptr.kind == LLVALUE::REG);
             llvalue_t el;
             if (index.kind == LLVALUE::CONST) {
+                // If index is constant and negative, we check it above.
                 // Take into consideration the 4 bytes of the length.
                 index.val += 4;
             } else {
+                lbl_pair_t lbls_neg_check;
+                lbls_neg_check.construct("bounds_neg");
+                llvalue_t cmp_res = llvm_op('<', index, {LLVALUE::CONST, 0});
+                llvm_branch_cond(cmp_res, lbls_neg_check.start, lbls_neg_check.end);
+
+                llvm_gen_lbl(lbls_neg_check.start);
+                // TODO: Do something better
+                emit("    EXIT\n\n");
+                llvm_gen_lbl(lbls_neg_check.end);
                 index = llvm_op('+', index, {LLVALUE::CONST, 4});
             }
             ptr = llvm_getelementptr(ptr, index);
@@ -1151,7 +1187,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     case EXPR::MSG_SEND:
     {
         // TODO: -- Codegen --
-        // One possible implementation is to create a Buf of llvalue_t and
+        // One possible implementation is to create a FuncArr of llvalue_t and
         // generate the expressions (preferably in reverse order to follow
         // the usual calling conventions although I'm not sure whether llvm
         // handles that - probably not). Note that this buf should allocate

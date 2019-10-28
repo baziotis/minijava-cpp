@@ -1,0 +1,18 @@
+    %3 = load i32, i32* %1, align 4
+    %4 = icmp slt i32 %2, %3
+    br i1 %4, label bounds_len_end1, label bounds_len1
+
+bounds_len1:
+    EXIT
+
+bounds_len_end1:
+    %5 = icmp slt i32 %2, 0
+    br i1 %5, label bounds_neg2, label bounds_neg_end2
+
+bounds_neg2:
+    EXIT
+
+bounds_neg_end2:
+    %6 = add i32 %2, 4
+    %7 = getelementptr inbounds i32, i32* %1, i32 %6
+    %8 = load i32, i32* %7, align 4

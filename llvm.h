@@ -45,7 +45,7 @@ struct llvm_label_t {
         generated = false;
     }
 
-    void construct(const char *_lbl, long num = -1) {
+    void construct(const char *_lbl, long num) {
         assert(!generated);
         assert(_lbl);
         assert(lbl == NULL);
@@ -66,13 +66,19 @@ struct llvm_label_t {
     }
 };
 
-struct and_lbl_pair_t {
+struct lbl_pair_t {
     llvm_label_t start;
     llvm_label_t end;
 
-    void construct() {
+    void construct(const char *lbl) {
         long num = gen_lbl();
-        start.construct("and", num);
-        end.construct("and_end", num);
+        size_t len = strlen(lbl);
+        size_t alloc_size = len + 10;
+        char *pstart = (char *) allocate(alloc_size, MEM::FUNC);
+        char *pend = (char *) allocate(alloc_size, MEM::FUNC);
+        sprintf(pstart, "%s", lbl);
+        sprintf(pend, "%s_end", lbl);
+        start.construct(pstart, num);
+        end.construct(pend, num);
     }
 };
