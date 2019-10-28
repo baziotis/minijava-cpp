@@ -1,0 +1,10 @@
+	%2 = add i32 %1, 2
+	%3 = icmp slt i32 3, %2
+	%4 = icmp eq i1 %3, 0
+	br i1 %4, label and1, label and_end1
+
+and1:
+	br and_end1
+
+and_end1:
+	%5 = phi i1 [ false, %0 ], [ 1, and1]

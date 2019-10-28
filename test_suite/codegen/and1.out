@@ -1,0 +1,14 @@
+	br i1 %1, label and1, label and_end1
+
+and1:
+	br i1 %2, label and2, label and_end2
+
+and2:
+	br and_end2
+
+and_end2:
+	%4 = phi i1 [ false, and1 ], [ %3, and2]
+	br and_end1
+
+and_end1:
+	%5 = phi i1 [ false, %0 ], [ %4, and_end2]
