@@ -628,6 +628,9 @@ static bool deduce_method(Buf<Type*> expr_list, const char *method_id, IdType *c
     return false;
 }
 
+
+/// LLVM CODEGEN
+
 void emit(const char *fmt, ...) {
     if (config.codegen) {
         va_list args;
@@ -675,6 +678,12 @@ static void print_llvalue(llvalue_t v, bool its_bool = false) {
     }
 }
 
+static void print_codegen_indentation() {
+    for (int i = 0; i != 4; ++i) {
+        emit(" ");
+    }
+}
+
 static llvalue_t llvm_op(int op, llvalue_t res1, llvalue_t res2) {
     llvalue_t v;
 
@@ -686,7 +695,8 @@ static llvalue_t llvm_op(int op, llvalue_t res1, llvalue_t res2) {
 
     long lhs = gen_reg();
     v.reg = lhs;
-    emit("\t%%%ld = ", lhs);
+    print_codegen_indentation();
+    emit("%%%ld = ", lhs);
     switch (op) {
     case '+': emit("add i32 "); break;
     case '-': emit("sub i32 "); break;
@@ -707,7 +717,8 @@ static llvalue_t llvm_getelementptr(llvalue_t ptr, llvalue_t index) {
     llvalue_t v;
     v.reg = gen_reg();
     v.kind = LLVALUE::REG;
-    emit("\t%%%ld = getelementptr inbounds i32, i32* %%%ld, i32 ", v.reg, ptr.reg);
+    print_codegen_indentation();
+    emit("%%%ld = getelementptr inbounds i32, i32* %%%ld, i32 ", v.reg, ptr.reg);
     print_llvalue(index);
     emit("\n");
     return v;
@@ -717,14 +728,16 @@ static llvalue_t llvm_load(llvalue_t ptr) {
     llvalue_t v;
     v.reg = gen_reg();
     v.kind = LLVALUE::REG;
-    emit("\t%%%ld = load i32, i32* %%%ld, align 4\n", v.reg, ptr.reg);
+    print_codegen_indentation();
+    emit("%%%ld = load i32, i32* %%%ld, align 4\n", v.reg, ptr.reg);
     return v;
 }
 
 static llvalue_t not_llvalue(llvalue_t v) {
     assert(v.kind == LLVALUE::REG);
     long reg = gen_reg();
-    emit("\t%%%ld = icmp eq i1 %%%ld, 0\n", reg, v.reg);
+    print_codegen_indentation();
+    emit("%%%ld = icmp eq i1 %%%ld, 0\n", reg, v.reg);
     v.reg = reg;
     return v;
 }
@@ -733,7 +746,8 @@ static llvalue_t llvm_calloc(int sz) {
     llvalue_t v;
     v.kind = LLVALUE::REG;
     v.reg = gen_reg();
-    emit("\t%%%ld = call noalias i8* @calloc(i64 1, i64 %d)\n", v.reg, sz);
+    print_codegen_indentation();
+    emit("%%%ld = call noalias i8* @calloc(i64 1, i64 %d)\n", v.reg, sz);
     return v;
 }
 
@@ -745,13 +759,15 @@ static void llvm_gen_lbl(llvm_label_t l) {
 }
 
 static void llvm_branch_cond(llvalue_t cond, llvm_label_t l1, llvm_label_t l2) {
-    emit("\tbr i1 ");
+    print_codegen_indentation();
+    emit("br i1 ");
     print_llvalue(cond);
     emit(", label %s, label %s\n\n", l1.lbl, l2.lbl);
 }
 
 static void llvm_branch(llvm_label_t l) {
-    emit("\tbr %s\n\n", l.lbl);
+    print_codegen_indentation();
+    emit("br %s\n\n", l.lbl);
 }
 
 static llvalue_t llvm_and_phi(llvm_label_t l1, llvalue_t v1, llvm_label_t l2) {
@@ -760,7 +776,8 @@ static llvalue_t llvm_and_phi(llvm_label_t l1, llvalue_t v1, llvm_label_t l2) {
     v.reg = gen_reg();
     // We only need boolean values
     assert(v1.kind == LLVALUE::REG || (v1.val == 0 || v1.val == 1));
-    emit("\t%%%ld = phi i1 [ false, %s ], [ ", v.reg, l1.lbl);
+    print_codegen_indentation();
+    emit("%%%ld = phi i1 [ false, %s ], [ ", v.reg, l1.lbl);
     print_llvalue(v1);
     emit(", %s]\n", l2.lbl);
     return v;
