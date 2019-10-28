@@ -516,6 +516,14 @@ static bool compatible_types(Type *lhs, Type *rhs) {
     return false;
 }
 
+#include "llvm.h"
+
+struct {
+    llvm_label_t curr_lbl;
+    llvalue_t llval;
+    Type *ty;
+} __expr_context;
+
 void MainTypeCheckVisitor::visit(Method *method) {
     LOG_SCOPE;
     debug_print("MainTypeCheck::Method %s\n", method->id);
@@ -528,6 +536,9 @@ void MainTypeCheckVisitor::visit(Method *method) {
         ++param_counter;
     }
     set_reg(param_counter);
+
+    // Set current label to %0
+    __expr_context.curr_lbl = llvm_label_t("%0");
 
     for (Statement *stmt : method->stmts) {
         stmt->accept(this);
@@ -616,90 +627,6 @@ static bool deduce_method(Buf<Type*> expr_list, const char *method_id, IdType *c
     } while (runner);
     return false;
 }
-
-enum class LLVALUE {
-    UNDEFINED,
-    CONST,
-    REG,
-};
-
-struct llvalue_t {
-    LLVALUE kind;
-    union {
-        long reg;
-        int val;
-    };
-
-    llvalue_t() { }
-
-
-    llvalue_t(bool _val) {
-        kind = LLVALUE::CONST;
-        val = (int) _val;
-    }
-
-    llvalue_t(LLVALUE _kind, int _val) {
-        assert(_kind == LLVALUE::CONST);
-        kind = _kind;
-        val = _val;
-    }
-    llvalue_t(LLVALUE _kind, long _reg) {
-        assert(_kind == LLVALUE::REG);
-        kind = _kind;
-        reg = _reg;
-    }
-};
-
-struct llvm_label_t {
-    const char *lbl;
-    bool generated;
-
-    llvm_label_t() : lbl(NULL), generated(false) { }
-
-    llvm_label_t(const char *_lbl) {
-        // Assume that the label is string literal
-        lbl = _lbl;
-        generated = false;
-    }
-
-    void construct(const char *_lbl, long num = -1) {
-        assert(!generated);
-        assert(_lbl);
-        assert(lbl == NULL);
-        if (num == -1) {
-            long num = gen_lbl();
-        }
-
-        // Labels are allocated in MEM::LABEL arena.
-        // This arena is freed when we finish a method.
-
-        size_t len = strlen(_lbl);
-        // Allocate space that will surely be enough.
-        size_t alloc_size = len + 20;
-        char *p = (char *) allocate(alloc_size, MEM::LABEL);
-        // sprintf might be slow.
-        sprintf(p, "%s%ld", _lbl, num);
-        lbl = (const char *) p;
-    }
-};
-
-struct and_lbl_pair_t {
-    llvm_label_t start;
-    llvm_label_t end;
-
-    void construct() {
-        long num = gen_lbl();
-        start.construct("and", num);
-        end.construct("and_end", num);
-    }
-};
-
-struct {
-    llvm_label_t curr_lbl;
-    llvalue_t llval;
-    Type *ty;
-} __expr_context;
-
 
 void emit(const char *fmt, ...) {
     if (config.codegen) {
@@ -838,9 +765,6 @@ static llvalue_t llvm_and_phi(llvm_label_t l1, llvalue_t v1, llvm_label_t l2) {
     emit(", %s]\n", l2.lbl);
     return v;
 }
-
-llvalue_t res;
-
 
 // Only used for EXPR::AND
 static Type *typecheck_and_helper(bool is_correct, Expression *expr,
@@ -991,14 +915,6 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
 
     case EXPR::AND:
     {
-        // TODO: REMOVE THAT
-        static int __test = false;
-
-        if (!__test) {
-            __expr_context.curr_lbl = llvm_label_t("%0");
-            __test = true;
-        }
-
         debug_print("MainTypeCheck::AndExpression\n");
         assert(be->e1);
         assert(be->e2);
