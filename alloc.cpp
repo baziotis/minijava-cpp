@@ -115,6 +115,8 @@ void *allocate_zero(size_t n, MEM ar) {
 // Internally, that means 
 void deallocate(MEM enum_ar) {
     int ar = (int) enum_ar;
+    // Check for double deallocation.
+    if (arena[ar]->next == NULL) return;
     // Connect the arena's last block with the start of free blocks list
     arena[ar]->next = freeblocks;
     // Now point the start of the free blocks list to the first block of the arena

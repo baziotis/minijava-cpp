@@ -1,3 +1,5 @@
+#include "alloc.h"
+
 enum class LLVALUE {
     UNDEFINED,
     CONST,
@@ -51,13 +53,13 @@ struct llvm_label_t {
             long num = gen_lbl();
         }
 
-        // Labels are allocated in MEM::LABEL arena.
+        // Labels are allocated in MEM::FUNC arena.
         // This arena is freed when we finish a method.
 
         size_t len = strlen(_lbl);
         // Allocate space that will surely be enough.
         size_t alloc_size = len + 20;
-        char *p = (char *) allocate(alloc_size, MEM::LABEL);
+        char *p = (char *) allocate(alloc_size, MEM::FUNC);
         // sprintf might be slow.
         sprintf(p, "%s%ld", _lbl, num);
         lbl = (const char *) p;

@@ -5,6 +5,7 @@
 
 #include "ast.h"
 #include "alloc.h"
+#include "array.h"
 #include "common.h"
 #include "debug_print.h"
 #include "error.h"          // log()
@@ -537,8 +538,10 @@ void MainTypeCheckVisitor::visit(Method *method) {
     }
     set_reg(param_counter);
 
+    // TODO: Emit the entry label / basic block for each
+    // function
     // Set current label to %0
-    __expr_context.curr_lbl = llvm_label_t("%0");
+    __expr_context.curr_lbl = llvm_label_t("entry");
 
     for (Statement *stmt : method->stmts) {
         stmt->accept(this);
@@ -564,7 +567,7 @@ void MainTypeCheckVisitor::visit(Method *method) {
     this->curr_method = NULL;
 
     // Free arena for labels
-    deallocate(MEM::LABEL);
+    deallocate(MEM::FUNC);
 }
 
 static Local *lookup_local(const char *id, Method *method, IdType *cls) {
@@ -592,7 +595,10 @@ static Local *lookup_local(const char *id, Method *method, IdType *cls) {
     return NULL;
 }
 
-static bool check_expr_list_against_method(Buf<Type*> expr_list, Method *method) {
+// Buf with memory arena MEM::FUNC
+template<typename T> using FuncArr = Array<T, MEM::FUNC>;
+
+static bool check_expr_list_against_method(FuncArr<Type*> expr_list, Method *method) {
     if (expr_list.len != method->param_len) {
         return false;
     }
@@ -609,7 +615,7 @@ static bool check_expr_list_against_method(Buf<Type*> expr_list, Method *method)
     return true;
 }
 
-static bool deduce_method(Buf<Type*> expr_list, const char *method_id, IdType *cls, Type **ret_type) {
+static bool deduce_method(FuncArr<Type*> expr_list, const char *method_id, IdType *cls, Type **ret_type) {
     IdType *runner = cls;
     do {
         Method *method = lookup_method(method_id, runner);
@@ -828,6 +834,12 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         assert(this->curr_method);
         assert(this->curr_class);
         Local *local = lookup_local(expr->id, this->curr_method, this->curr_class);
+        // TODO: If the id is not local (parameter or variable), it will not have
+        // a register assigned. Add the functionality to check if it has one
+        // and if not, load the value into a register from the `this` pointer
+        // (register %0). This should be done according to where the id exists
+        // in the class (or the parent class etc.)
+
         __expr_context.llval.kind = LLVALUE::REG;
         __expr_context.llval.reg = local->reg;
         if (!local) {
@@ -1138,6 +1150,13 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     } break;
     case EXPR::MSG_SEND:
     {
+        // TODO: -- Codegen --
+        // One possible implementation is to create a Buf of llvalue_t and
+        // generate the expressions (preferably in reverse order to follow
+        // the usual calling conventions although I'm not sure whether llvm
+        // handles that - probably not). Note that this buf should allocate
+        // memory from a method-persistent memory arena (that currently is
+        // FUNC).
         debug_print("MainTypeCheck::MessageSendExpression\n");
         assert(be->e1);
         IdType *type = (IdType*) be->e1->accept(this);
@@ -1155,7 +1174,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             return this->type_table.undefined_type;
         }
 
-        Buf<Type*> expr_list_types(be->msd->expr_list.len);
+        FuncArr<Type*> expr_list_types(be->msd->expr_list.len);
         for (Expression *e : be->msd->expr_list) {
             expr_list_types.push(e->accept(this));
         }
