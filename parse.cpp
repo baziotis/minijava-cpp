@@ -195,6 +195,7 @@ static Expression *parse_expr_primary() {
     } break;
     default:
     {
+        syntax_error("An expression can't start with: `", token, "`");
         expr->kind = EXPR::UNDEFINED;
     }
     }
@@ -236,6 +237,9 @@ static Buf<Expression*> parse_expr_list() {
 static Expression *parse_expr() {
     Expression *e1 = parse_expr_clause();
     assert(e1);
+    if (e1->kind == EXPR::UNDEFINED) {
+        goto Lerror;
+    }
     if (!is_op(token.kind)) {
         // Handle ArrayLength and MessageSend.
         if (match_token(TOK::DOT)) {
@@ -266,9 +270,7 @@ static Expression *parse_expr() {
                     expr = be;
                 }
             } else {  // Error
-                expr = new Expression;
-                expr->loc = loc;
-                expr->kind = EXPR::UNDEFINED;
+                goto Lerror;
             }
             return expr;
         }
@@ -301,6 +303,7 @@ static Expression *parse_expr() {
                 // "expected expression".
                 syntax_error("Expected integer expression as a right-hand-side "
                              "expression for operator `", token_name(kind), "`.");
+                goto Lerror;
             }
             switch (kind) {
             case TOK::LT:       bin_expr->kind = EXPR::CMP;       break;
@@ -317,6 +320,11 @@ static Expression *parse_expr() {
         }
     }
     return bin_expr;
+Lerror:
+    Expression *expr = new Expression;
+    expr->loc = loc;
+    expr->kind = EXPR::UNDEFINED;
+    return expr;
 }
 
 /* Statements
@@ -381,7 +389,7 @@ static Statement *parse_stmt() {
             asgn_stmt->id = id;
             asgn_stmt->rhs = parse_expr();
             if (asgn_stmt->rhs->kind == EXPR::UNDEFINED) {
-                syntax_error_no_ln("RHS expression of assignment to ", id, " is invalid");
+                syntax_error_no_ln("RHS expression of assignment to `", id, "` is invalid");
                 skip_tokens(TOK::SEMI);
                 goto Lerror;
             }
@@ -398,7 +406,7 @@ static Statement *parse_stmt() {
             }
             arr_as->rhs = parse_expr();
             if (arr_as->rhs->kind == EXPR::UNDEFINED) {
-                syntax_error_no_ln("RHS expression of array assignment to ", id, " is invalid");
+                syntax_error_no_ln("RHS expression of array assignment to `", id, "` is invalid");
                 skip_tokens(TOK::SEMI);
                 goto Lerror;
             }

@@ -46,6 +46,7 @@ int main()
             par_ptr += 3;
             fclose(fp);
             char buf[512];
+            //printf("%s\n", entry->d_name);
             sprintf(buf, "../main %s %s > curr_out", entry->d_name, par_ptr);
             system(buf);
             sprintf(buf, "diff curr_out %.*s.out > curr_diff", namelen - 5, entry->d_name);

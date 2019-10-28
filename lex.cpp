@@ -348,7 +348,7 @@ lex_again:
     } break;
 
     // The rest of letters and _ (which correspond to an identifier)
-    case 'a': case 'd': case 'h': case 'j':
+    case 'a': case 'd': case 'g': case 'h': case 'j':
     case 'k': case 'l': case 'm': case 'o':
     case 'q': case 'u':
     case 'x': case 'y': case 'z':
