@@ -272,7 +272,7 @@ void MethodDeclaration::print() const {
         debug_print("Body:\n");
         {
             for (Statement *s: this->stmts) {
-                if (s->kind != STMT::UNDEFINED) {
+                if (!s->is_undefined()) {
                     s->print();
                 }
             }

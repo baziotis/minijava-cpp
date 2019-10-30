@@ -336,7 +336,7 @@ static bool starts_statement(TOK kind) {
 template<typename T>
 static void parse_stmt_and_push(Buf<T> *stmts) {
     Statement *s = parse_stmt();
-    if (s->kind != STMT::UNDEFINED) {
+    if (!s->is_undefined()) {
         stmts->push(s);
     }
 }

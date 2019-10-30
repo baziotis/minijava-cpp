@@ -97,27 +97,14 @@ struct BinaryExpression : public Expression {
 
 /* Statements
  */
-// TODO: This is almost not used, so we might want to
-// get rid of it.
-enum struct STMT {
-    UNDEFINED,
-    BLOCK,
-    ASGN,
-    ARR_ASGN,
-    IF,
-    WHILE,
-    PRINT
-};
-
 struct Statement : public ParsingPersistentAllocation {
     location_t loc;
-    STMT kind;
-
-    Statement() { kind = STMT::UNDEFINED; }
 
     virtual const char *name() const = 0;
-
     virtual void print() const = 0;
+    virtual bool is_undefined() const {
+        return false;
+    }
 
     /* Type-checking - Pass 1
     */
@@ -131,13 +118,13 @@ struct Statement : public ParsingPersistentAllocation {
 };
 
 struct UndefinedStatement : public Statement {
-    UndefinedStatement() { kind = STMT::UNDEFINED; }
-
     virtual const char *name() const override {
         return "Undefined (Error)";
     }
-
     void print() const override;
+    bool is_undefined() const override {
+        return true;
+    }
 
     /* Type-checking - Pass 2
      */
@@ -149,12 +136,9 @@ struct UndefinedStatement : public Statement {
 struct BlockStatement : public Statement {
     Buf<Statement*> block;
 
-    BlockStatement() { kind = STMT::BLOCK; }
-
     const char *name() const override {
         return "Block (Statement)";
     }
-
     void print() const override;
 
     /* Type-checking - Pass 2
@@ -168,12 +152,9 @@ struct AssignmentStatement : public Statement {
     const char *id;
     Expression *rhs;
 
-    AssignmentStatement() { kind = STMT::ASGN; }
-
     const char *name() const override {
         return "AssignmentStatement";
     }
-
     void print() const override;
 
     /* Type-checking - Pass 2
@@ -188,12 +169,9 @@ struct ArrayAssignmentStatement : public Statement {
     Expression *index;
     Expression *rhs;
 
-    ArrayAssignmentStatement() { kind = STMT::ARR_ASGN; }
-
     const char *name() const override {
         return "ArrayAssignmentStatement";
     }
-
     void print() const override;
 
     /* Type-checking - Pass 2
@@ -207,12 +185,9 @@ struct IfStatement : public Statement {
     Expression *cond;
     Statement *then, *else_;
 
-    IfStatement() { kind = STMT::IF; }
-
     const char *name() const override {
         return "IfStatement";
     }
-
     void print() const override;
 
     /* Type-checking - Pass 2
@@ -226,12 +201,9 @@ struct WhileStatement : public Statement {
     Expression *cond;
     Statement *body;
 
-    WhileStatement() { kind = STMT::WHILE; }
-
     const char *name() const override {
         return "WhileStatement";
     }
-
     void print() const override;
 
     /* Type-checking - Pass 2
@@ -244,12 +216,9 @@ struct WhileStatement : public Statement {
 struct PrintStatement : public Statement {
     Expression *to_print;
 
-    PrintStatement() { kind = STMT::PRINT; }
-
     const char *name() const override {
         return "PrintStatement";
     }
-
     void print() const override;
 
     /* Type-checking - Pass 2
