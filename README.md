@@ -25,7 +25,7 @@ Run: `./main filename.java {-v} {-no-style} {-offsets}`
 
 # Performance
 There has been no serious effort to optimize the compiler. But, as of writing this, it **type-checks**
-in the following speeds _on my PC_ (AMD Ryzen 7 1700, 16 GB RAM, nvme SSD).
+in the following speeds (CPU: Intel Core i5-6500 @ 3.2ghz, RAM: 16G ).
 
 | Build          | LOC / second    |
 | :------------: | :-------------: |
