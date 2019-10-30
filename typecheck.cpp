@@ -429,7 +429,7 @@ static void print_param_types(Method *method) {
     size_t param_len = method->param_len;
     for (size_t i = 0; i != param_len; ++i) {
         Local *param = method->locals[i];
-        param->type->print();
+        printf("%s", param->type->name());
         if (i + 1 != param_len) {
             printf(", ");
         }
@@ -941,28 +941,14 @@ void MainTypeCheckVisitor::visit(PrintStatement *print_stmt) {
     print_stmt->to_print->accept(this);
 }
 
-/* Types
- */
-void Type::print() const {
-    LOG_SCOPE;
-    switch (this->kind) {
-    case TY::UNDEFINED: {
-        red_on();
-        printf("Undefined Type (Error)\n");
-        red_off();
-    } break;
-    case TY::INT: {
-        printf("int");
-    } break;
-    case TY::ARR: {
-        printf("int[]");
-    } break;
-    case TY::BOOL: {
-        printf("boolean");
-    } break;
-    // Should be handled by virtual print()
-    // in IdType.
-    case TY::ID: assert(0);
+
+const char *Type::name() const {
+    switch (kind) {
+    case TY::UNDEFINED: return "Undefined Type (Error)";
+    case TY::INT: return "int";
+    case TY::ARR: return "int[]";
+    case TY::BOOL: return "boolean";
+    case TY::ID: return ((IdType *)this)->id; 
     default: assert(0);
     }
 }
@@ -976,14 +962,4 @@ Method::Method(MethodDeclaration *method_decl) {
     ret_expr = method_decl->ret;
     loc = method_decl->loc;
     overrides = false;
-}
-
-void Method::print() const {
-    LOG_SCOPE;
-    debug_print("Method name: %s\n", this->id);
-}
-
-void IdType::print() const {
-    LOG_SCOPE;
-    debug_print("IdType: %s\n", this->id);
 }

@@ -185,20 +185,13 @@ struct Type : public TypeCheckCustomAllocation {
     Type(TY _kind) : kind(_kind) { }
 
     bool is_defined() const { return kind != TY::UNDEFINED; }
-
-    virtual IdType *is_IdType() { return NULL; };
-
-    virtual void print() const;
-
-    virtual const char *name() const {
-        switch (kind) {
-        case TY::UNDEFINED: return "Undefined Type (Error)";
-        case TY::INT: return "int";
-        case TY::ARR: return "int[]";
-        case TY::BOOL: return "boolean";
-        default: assert(0);
+    const char *name() const;
+    IdType *is_IdType() {
+        if (kind == TY::ID) {
+            return (IdType *) this;
         }
-    }
+        return NULL;
+    };
 };
 
 // TODO: Check if `id` fields are actually ever used for Locals
@@ -211,7 +204,6 @@ struct Local  : public TypeCheckCustomAllocation {
 
     Local() : id(NULL), initialized(false) { }
     Local(const char *_id, Type *_type) : id(_id), type(_type), initialized(false) { }
-
 };
 
 using Var = Local;
@@ -238,8 +230,6 @@ struct Method : public TypeCheckCustomAllocation {
 
     Method() = delete;
     Method(MethodDeclaration *method_decl);
-
-    void print() const;
 
     void accept(MainTypeCheckVisitor *v) {
         v->visit(this);
@@ -281,14 +271,6 @@ struct IdType : public Type {
     void set_parent(IdType *_parent) {
         parent = _parent;
     }
-
-    void print() const override;
-
-    const char *name() const override {
-        return this->id;
-    }
-
-    IdType *is_IdType() override { return this; };
 
     void accept(MainTypeCheckVisitor *v) {
         v->visit(this);
