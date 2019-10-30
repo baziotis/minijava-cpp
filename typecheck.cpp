@@ -14,6 +14,35 @@
 
 extern config_t config;
 
+/* Errors
+ */
+static int num_global_typecheck_errors;
+template <typename... Args> 
+void typecheck_error_no_ln(location_t __loc, Args... args) {
+    ++num_global_typecheck_errors;
+    log(__loc);
+    yellow_on();
+    bold_on();
+    log(" Semantic Error: ");
+    bold_off();
+    yellow_off();
+    log(args...);
+}
+
+template <typename... Args> 
+static void typecheck_error(location_t __loc, Args... args) {
+    ++num_global_typecheck_errors;
+    log(__loc);
+    yellow_on();
+    bold_on();
+    log(" Semantic Error: ");
+    bold_off();
+    yellow_off();
+    log(args...);
+    printf("\n");
+}
+/* End of errors */
+
 void typecheck_init() {
     set_indent_char('*');
 }
@@ -54,7 +83,10 @@ void TypeTable::compute_and_print_offsets_for_type(IdType *type) {
     
     size_t running_offset = start_fields;
     for (Local *field : type->fields) {
-        printf("%s.%s: %zd\n", type->id, field->id, running_offset);
+        field->offset = running_offset;
+        if (config.offsets) {
+            printf("%s.%s: %zd\n", type->id, field->id, field->offset);
+        }
         if (field->type == this->bool_type) {
             running_offset += 1;
         } else if (field->type == this->int_type) {
@@ -71,7 +103,10 @@ void TypeTable::compute_and_print_offsets_for_type(IdType *type) {
     running_offset = start_methods;
     for (Method *method: type->methods) {
         if (!method->overrides) {
-            printf("%s.%s: %zd\n", type->id, method->id, running_offset);
+            if (config.offsets) {
+                printf("%s.%s: %zd\n", type->id, method->id, running_offset);
+            }
+            method->offset = running_offset;
             running_offset += 8;
         }
     }
@@ -89,10 +124,10 @@ void TypeTable::offset_computation() {
     }
 }
 
-void typecheck(Goal goal) {
+bool typecheck(Goal *goal) {
     typecheck_init();
     // Pass 1
-    TypeTable type_table = install_type_declarations(&goal);
+    TypeTable type_table = install_type_declarations(goal);
     if (config.log) {
         printf("\n");
     }
@@ -105,14 +140,16 @@ void typecheck(Goal goal) {
                         "defined");
     }
     // Pass 2
-    full_typecheck(&goal, type_table);
+    full_typecheck(goal, type_table);
     
-    if (config.offsets) {
+    if (num_global_typecheck_errors == 0) {
         // Offset computation
         type_table.offset_computation();
+    } else {
+        return false;
     }
+    return true;
 }
-
 
 /* Declaration Visitor
  */

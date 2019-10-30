@@ -199,11 +199,21 @@ struct Type : public TypeCheckCustomAllocation {
 struct Local  : public TypeCheckCustomAllocation {
     const char *id;
     Type *type;
-    long reg;
+    union {
+        // Register for params and variables.
+        long reg;
+        // Offset for fields.
+        size_t offset;
+    };
     bool initialized;
 
     Local() : id(NULL), initialized(false) { }
     Local(const char *_id, Type *_type) : id(_id), type(_type), initialized(false) { }
+
+    size_t offsetof_() const {
+        // +8 for the virtual pointer.
+        return offset + 8;
+    }
 };
 
 using Var = Local;
@@ -221,6 +231,8 @@ struct Method : public TypeCheckCustomAllocation {
     size_t param_len;  // To know where params
     // end (and vars start).
     SerializedHashTable<Local*> locals;
+    // Offset in the virtual table
+    size_t offset;
     location_t loc;
     bool overrides;  // if it overrides parent method
     
@@ -233,6 +245,10 @@ struct Method : public TypeCheckCustomAllocation {
 
     void accept(MainTypeCheckVisitor *v) {
         v->visit(this);
+    }
+
+    size_t offsetof_() const {
+        return offset;
     }
 };
 
@@ -275,11 +291,15 @@ struct IdType : public Type {
     void accept(MainTypeCheckVisitor *v) {
         v->visit(this);
     }
-};
 
+    size_t sizeof_() const {
+        // +8 for the virtual pointer
+        return fields_end + 8;
+    }
+};
 
 /* Prototypes
  */
-void typecheck(Goal goal);
+bool typecheck(Goal *goal);
 
 #endif
