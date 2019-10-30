@@ -4,6 +4,6 @@ cd ../
 cd test_suite/
 gcc test.c -o test && ./test
 rm test
-cd codegen/
-./test.sh
-cd ../
+#cd codegen/
+#./test.sh
+#cd ../

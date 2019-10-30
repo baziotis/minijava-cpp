@@ -140,7 +140,7 @@ struct MainTypeCheckVisitor {
     void    visit(IdType *type);
     void    visit(Method *method);
 
-    Type*   visit(Expression *expr);
+    void    visit(Expression *expr);
 
     // Statements
     void    visit(BlockStatement *block_stmt);

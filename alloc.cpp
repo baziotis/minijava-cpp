@@ -1,9 +1,9 @@
-#include <assert.h>
 #include <stdlib.h>    // malloc()
 #include <stdint.h>    // uint8_t
 #include <string.h>    // memset()
 
 #include "alloc.h"     // MEM
+#include "common.h"     // MEM
 
 /********************************** ALLOC *****************************************
     

@@ -62,6 +62,7 @@ struct MessageSendData : public ParsingPersistentAllocation {
 struct Expression : public ParsingPersistentAllocation {
     location_t loc;
     EXPR kind;
+    Type *type;
     union {
         Expression *e1;
         // Integer/True/False Literals.
@@ -79,8 +80,8 @@ struct Expression : public ParsingPersistentAllocation {
     }
 
     // Pass 2
-    Type* accept(MainTypeCheckVisitor *v) {
-        return v->visit(this);
+    void accept(MainTypeCheckVisitor *v) {
+        v->visit(this);
     }
 };
 

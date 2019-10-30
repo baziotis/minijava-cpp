@@ -3,10 +3,10 @@
 
 #include <stdio.h>
 
-#include <assert.h>
 #include <stdint.h>
 #include <type_traits>
 #include "alloc.h"
+#include "common.h"
 
 // Parallel buffers of ids (const char *) and value (e.g. Method)
 // for faster searching in the ids. The ids are interned

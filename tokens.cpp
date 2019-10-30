@@ -1,5 +1,5 @@
-#include <assert.h>
 #include <stdio.h>
+#include "common.h"
 #include "tokens.h"
 
 const char* token_name(TOK tok) {

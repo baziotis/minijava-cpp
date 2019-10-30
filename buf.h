@@ -1,10 +1,10 @@
 #ifndef BUF_H
 #define BUF_H
 
-#include <assert.h>
 #include <stdlib.h>
-
 #include <limits>
+
+#include "common.h"
 
 #define MAX(a, b) ((a > b) ? a : b)
 

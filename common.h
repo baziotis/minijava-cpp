@@ -1,6 +1,8 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#include <assert.h>
+
 // Represent a file location. This for the time being
 // is only an integer denoting the line.
 // TODO: Consider what Go does with Pos.

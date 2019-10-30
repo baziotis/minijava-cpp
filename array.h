@@ -1,10 +1,10 @@
 #ifndef ARRAY_H
 #define ARRAY_H
 
-#include <assert.h>
 #include <limits>
 
 #include "alloc.h"
+#include "common.h"
 
 #define MAX(a, b) ((a > b) ? a : b)
 

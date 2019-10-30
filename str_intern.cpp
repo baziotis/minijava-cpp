@@ -1,12 +1,12 @@
 #include <vector>
 
-#include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
 #include "alloc.h"
+#include "common.h"
 #include "str_intern.h"
 
 /*

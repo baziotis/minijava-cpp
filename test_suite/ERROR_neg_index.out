@@ -1,2 +1,0 @@
-ERROR_neg_index.java: 11:  Semantic Error: Index with constant value: -1 is out of bounds (negative)
-ERROR_neg_index.java: 11:  Semantic Error: The type: `Undefined Type (Error)` of the return expression does not match the return type: `int` of method: `test`

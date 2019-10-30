@@ -1,4 +1,3 @@
-#include <cassert>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>           // printf
