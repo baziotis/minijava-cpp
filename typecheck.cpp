@@ -212,7 +212,6 @@ void TypeTable::offset_computation() {
     }
 }
 
-
 bool typecheck(Goal *goal) {
     typecheck_init();
     // Pass 1
@@ -556,10 +555,31 @@ static bool compatible_types(Type *lhs, Type *rhs) {
     return false;
 }
 
+#include "llvm.h"
+extern ExprContext __expr_context;
+
 void MainTypeCheckVisitor::visit(Method *method) {
     LOG_SCOPE;
     debug_print("MainTypeCheck::Method %s\n", method->id);
     this->curr_method = method;
+    
+    /// Codegen ///
+
+    // We're starting from 1, because register 0
+    // is always reserved for the 'this' pointer.
+    ssize_t param_counter = 1;
+    for (Local *local : method->locals) {
+        local->reg = param_counter;
+        ++param_counter;
+    }
+    set_reg(param_counter);
+
+    // TODO: Emit the entry label / basic block for each
+    // function
+    __expr_context.curr_lbl = llvm_label_t("entry");
+
+    /// End of Codegen ///
+
 
     for (Statement *stmt : method->stmts) {
         stmt->accept(this);
@@ -568,8 +588,7 @@ void MainTypeCheckVisitor::visit(Method *method) {
     // Check parse.cpp
     if (!method->ret_expr->is_undefined()) {
         assert(method->ret_expr);
-        method->ret_expr->accept(this);
-        Type *ret_type = method->ret_expr->type;
+        Type *ret_type = method->ret_expr->accept(this);
         assert(ret_type);
         assert(method->ret_type);
         if (!compatible_types(method->ret_type, ret_type)) {
@@ -653,6 +672,22 @@ static bool deduce_method(FuncArr<Type*> expr_list, const char *method_id, IdTyp
     return false;
 }
 
+// Only used for EXPR::AND
+static Type *typecheck_and_helper(bool is_correct, Expression *expr,
+                                  MainTypeCheckVisitor *v, Type *boolty, Type *undefinedty) {
+    Type *ty = expr->accept(v);
+    if (ty != boolty) {
+        typecheck_error(expr->loc, "Bad right operand for binary operator `&&`. Operand ",
+                        "of boolean type was expected, found: `", ty->name(), "`");
+        is_correct = false;
+    }
+    if (is_correct) {
+        return boolty;
+    }
+    return undefinedty;
+}
+
+
 // IMPORTANT: DO NOT check if a type is undefined with equality test with
 // type_table.undefined_type. Check a note above on a full explanation.
 // A lot of types can have remained undefined (either because we never saw a definition
@@ -661,7 +696,7 @@ static bool deduce_method(FuncArr<Type*> expr_list, const char *method_id, IdTyp
 // an undefined type in general (e.g. an expression has undefined type, return
 // type_table.undefined_type as its type. The caller checks for equality
 // with type_table.undefined_type to see if it was valid).
-void MainTypeCheckVisitor::visit(Expression *expr) {
+Type* MainTypeCheckVisitor::visit(Expression *expr) {
     LOG_SCOPE;
     assert(!expr->is_undefined());
 
@@ -672,7 +707,11 @@ void MainTypeCheckVisitor::visit(Expression *expr) {
     case EXPR::BOOL_LIT:
     {
         debug_print("MainTypeCheck::BoolExpression\n");
-        expr->type = this->type_table.bool_type;
+        /// Codegen ///
+        __expr_context.llval.kind = LLVALUE::CONST;
+        __expr_context.llval.val = expr->lit_val;
+        /// End of Codegen ///
+        return this->type_table.bool_type;
     } break;
     case EXPR::ID:
     {
@@ -680,29 +719,58 @@ void MainTypeCheckVisitor::visit(Expression *expr) {
         assert(this->curr_method);
         assert(this->curr_class);
         Local *local = lookup_local(expr->id, this->curr_method, this->curr_class);
+
+        /// Codegen ///
+
+        // TODO: If the id is not local (parameter or variable), it will not have
+        // a register assigned. Add the functionality to check if it has one
+        // and if not, load the value into a register from the `this` pointer
+        // (register %0). This should be done according to where the id exists
+        // in the class (or the parent class etc.)
+        __expr_context.llval.kind = LLVALUE::REG;
+        __expr_context.llval.reg = local->reg;
+
+        /// End of Codegen ///
+
         if (!local) {
             typecheck_error(expr->loc, "In identifier expression, Identifier: `",
                             expr->id, "` does is not defined.");
+            return this->type_table.undefined_type;
         } else if (!local->initialized) {
             // Only variables can remain uninitialized. Check
             // TypeDeclaration and MethodDeclaration in DeclarationVisitor.
             typecheck_error(expr->loc, "Variable: `",
                             expr->id, "` might have not been initialized.");
         }
-        expr->type = local->type;
+        return local->type;
     } break;
     case EXPR::INT_LIT:
     {
         debug_print("MainTypeCheck::IntegerExpression: %d\n", expr->lit_val);
-        expr->type = this->type_table.int_type;
+        /// Codegen ///
+        __expr_context.llval.kind = LLVALUE::CONST;
+        __expr_context.llval.val = expr->lit_val;
+        /// End of Codegen ///
+        return this->type_table.int_type;
     } break;
     case EXPR::THIS:
     {
         debug_print("MainTypeCheck::ThisExpression\n");
+        /// Codegen ///
+
+        // Assume that every function has as a first argument
+        // (so, register %0) a pointer to the calling class.
+        // Assume also that this pointer is typed properly,
+        // so no need to bitcast.
+        __expr_context.llval.kind = LLVALUE::REG;
+        __expr_context.llval.reg = 0;
+
+        /// End of Codegen ///
+
         assert(this->curr_class);
-        expr->type = this->curr_class;
+        return this->curr_class;
     } break;
-    case EXPR::ALLOC:
+    case EXPR::ALLOC: // TODO: Codegen
     {
         debug_print("MainTypeCheck::AllocationExpression\n");
         // Find the type of the Identifier.
@@ -710,47 +778,68 @@ void MainTypeCheckVisitor::visit(Expression *expr) {
         if (!type || type->kind == TY::UNDEFINED) {
             typecheck_error(expr->loc, "In allocation expression, Identifier: `",
                             expr->id, "` does not denote a known type");
-            expr->type = this->type_table.undefined_type;
-        } else {
-            assert(type->is_IdType());
-            expr->type = type;
+            return this->type_table.undefined_type;
         }
+        if (!type->is_IdType()) {
+            typecheck_error(expr->loc, "In allocation expression, Identifier: `",
+                            expr->id, "` does not denote a user-defined type");
+            return this->type_table.undefined_type;
+        }
+        return type;
     } break;
-    case EXPR::ARR_ALLOC:
+    case EXPR::ARR_ALLOC: // TODO: Codegen
     {
         debug_print("MainTypeCheck::ArrayAllocationExpression\n");
         assert(expr->e1);
-        expr->e1->accept(this);
-        Type *index_type = expr->e1->type;
+        Type *index_type = expr->e1->accept(this);
         if (index_type != this->type_table.int_type) {
             typecheck_error(expr->loc, "In array allocation expression, ",
                             "the index expression must be of integer type.");
         }
-        expr->type = this->type_table.int_arr_type;
+        return this->type_table.int_arr_type;
     } break;
     case EXPR::ARR_LEN:
     {
         debug_print("MainTypeCheck::LengthExpression\n");
         assert(expr->e1);
-        expr->e1->accept(this);
-        Type *arr = expr->e1->type;
+        Type *arr = expr->e1->accept(this);
+        llvalue_t ptr = __expr_context.llval;
         if (arr != this->type_table.int_arr_type) {
             typecheck_error(expr->loc, "In array length expression, ",
                             "the dereferenced id must be of integer array type.");
         }
-        expr->type = this->type_table.int_type;
+        /// Codegen ///
+
+        assert(ptr.kind == LLVALUE::REG);
+        // Just loading a 4-byte value from `the` ptr will give us the length
+        // as the first 4 bytes of arrays are the length.
+        __expr_context.llval = llvm_load(ptr);
+
+        /// End of Codegen ///
+
+        return this->type_table.int_type;
     } break;
     case EXPR::NOT:
     {
         debug_print("MainTypeCheck::NotExpression\n");
         assert(expr->e1);
-        expr->e1->accept(this);
-        Type *ty = expr->e1->type;
+        Type *ty = expr->e1->accept(this);
+        llvalue_t res = __expr_context.llval;
         if (ty != this->type_table.bool_type) {
             typecheck_error(expr->loc, "Bad operand for unary operator `!`. Operand ",
                             "of boolean type was expected, found: `", ty->name(), "`");
         }
-        expr->type = this->type_table.bool_type;
+        /// Codegen ///
+
+        if (res.kind == LLVALUE::CONST) {
+            __expr_context.llval.kind = LLVALUE::CONST;
+            __expr_context.llval.val = !res.val;
+        } else {
+            __expr_context.llval = not_llvalue(res);
+        }
+        /// End of Codegen ///
+
+        return this->type_table.bool_type;
     } break;
 
 /*----------- BINARY EXPRESSIONS ----------------*/
@@ -760,20 +849,91 @@ void MainTypeCheckVisitor::visit(Expression *expr) {
         debug_print("MainTypeCheck::AndExpression\n");
         assert(be->e1);
         assert(be->e2);
-        be->e1->accept(this);
-        Type *ty1 = be->e1->type;
-        be->e2->accept(this);
-        Type *ty2 = be->e2->type;
+        Type *ty1 = be->e1->accept(this);
+        llvalue_t res = __expr_context.llval;
+        bool is_correct = true;
+
+        llvm_label_t origin_lbl = __expr_context.curr_lbl;
 
         if (ty1 != this->type_table.bool_type) {
             typecheck_error(expr->loc, "Bad left operand for binary operator `&&`. Operand ",
                             "of boolean type was expected, found: `", ty1->name(), "`");
+            is_correct = false;
         }
-        if (ty2 != this->type_table.bool_type) {
-            typecheck_error(expr->loc, "Bad right operand for binary operator `&&`. Operand ",
-                            "of boolean type was expected, found: `", ty2->name(), "`");
+
+        // TODO: Currently, we can do constant-folding on the left expression. If it
+        // is constant, we will know when it returns and it won't have emitted anything.
+        // If not, it will have emitted and again we will know.
+        // _However_, we can't constant fold the right expression. This is because
+        // if it is not, we have to print a branch _before_ we process the right expression.
+        // Possible solutions:
+        // 1) The current one: constant fold only the left plus check if the right
+        //    one is a trivial constant expression that we can know if it is constant
+        //    a priori. Those are the BOOL_LIT expressions.
+        // 2) Provide the ability to codegen in a buffer. That way, we don't print, but
+        //    we output to the buffer that we can then use accordingly when we know
+        //    what kind of expr we have.
+        // 3) Disable the `config.codegen` (so, disable printing) and process the expr,
+        //    learn if it is constant and if it's not, re-process it. That may be
+        //    faster than it seems (and faster than 2) ).
+
+        // Note: Read carefully the following code, it's crafted subtly.
+
+        bool do_branching = true;
+        if (res.kind == LLVALUE::CONST && res.val == 0) {
+            // Constant left `false` value, don't run (i.e. codegen) the right expression.
+            // `res` remains and is the result of the left expr.
+            // We still have to type-check the right expr.
+            if (res.val == 0) {
+                // Turn off the codegen (if it was on), we only need to typecheck.
+                bool codegen = config.codegen;
+                config.codegen = false;
+                Type *ty = typecheck_and_helper(is_correct, be->e2, this,
+                                                this->type_table.bool_type,
+                                                this->type_table.undefined_type);
+                // We're done, restore it.
+                config.codegen = codegen;
+                // Restore
+                __expr_context.llval = res;
+                return ty;
+            } else {
+                // The result of the expr will be what the right expr is
+                // and will be generated with the code following. No need
+                // to do branching, phi etc.
+                do_branching = false;
+            }
         }
-        be->type = this->type_table.bool_type;
+        
+        lbl_pair_t and_lbls;
+        if (do_branching) {
+            // TODO: Here we need something like "insert BB", "insert BB after"
+            // like LDC has.
+            and_lbls.construct("and");
+            
+            // To reach this point, certainly res1.kind == LLVALUE::REG.
+            // TODO: Uncomment
+            //assert(res1.kind == LLVALUE::REG);
+            llvm_branch_cond(res, and_lbls.start, and_lbls.end);
+            llvm_gen_lbl(and_lbls.start);
+        }
+
+        Type *ret_ty = typecheck_and_helper(is_correct, be->e2, this,
+                                    this->type_table.bool_type,
+                                    this->type_table.undefined_type);
+        llvm_label_t save_curr_lbl = __expr_context.curr_lbl;
+        
+        if (do_branching) {
+            llvm_branch(and_lbls.end);
+
+            llvm_gen_lbl(and_lbls.end);
+            __expr_context.llval = llvm_and_phi(origin_lbl,
+                                                __expr_context.llval, save_curr_lbl);
+        } /* else {
+            `__expr_context.llval` has the value generated
+            when type-checking to receive `ret_ty`.
+        }
+        */
+        return ret_ty;
     } break;
 
     case EXPR::CMP:
@@ -781,10 +941,10 @@ void MainTypeCheckVisitor::visit(Expression *expr) {
         debug_print("MainTypeCheck::CmpExpression\n");
         assert(be->e1);
         assert(be->e2);
-        be->e1->accept(this);
-        Type *ty1 = be->e1->type;
-        be->e2->accept(this);
-        Type *ty2 = be->e2->type;
+        Type *ty1 = be->e1->accept(this);
+        llvalue_t res1 = __expr_context.llval;
+        Type *ty2 = be->e2->accept(this);
+        llvalue_t res2 = __expr_context.llval;
 
         if (ty1 != this->type_table.int_type) {
             typecheck_error(expr->loc, "Bad left operand for binary operator `<`. Operand ",
@@ -794,7 +954,10 @@ void MainTypeCheckVisitor::visit(Expression *expr) {
             typecheck_error(expr->loc, "Bad right operand for binary operator `<`. Operand ",
                             "of int type was expected, found: `", ty2->name(), "`");
         }
-        be->type = this->type_table.bool_type;
+        /// Codegen  ///
+        __expr_context.llval = llvm_op('<', res1, res2);
+        /// End of Codegen  ///
+        return this->type_table.bool_type;
     } break;
     case EXPR::PLUS:
     case EXPR::MINUS:
@@ -815,10 +978,10 @@ void MainTypeCheckVisitor::visit(Expression *expr) {
             debug_print("MainTypeCheck::TimesExpression\n");
         }
 
-        be->e1->accept(this);
-        Type *ty1 = be->e1->type;
-        be->e2->accept(this);
-        Type *ty2 = be->e2->type;
+        Type *ty1 = be->e1->accept(this);
+        llvalue_t res1 = __expr_context.llval;
+        Type *ty2 = be->e2->accept(this);
+        llvalue_t res2 = __expr_context.llval;
 
         if (ty1 != this->type_table.int_type) {
             typecheck_error(expr->loc, "Bad left operand for binary operator `", (char)op ,
@@ -830,57 +993,113 @@ void MainTypeCheckVisitor::visit(Expression *expr) {
                             "`. Operand of int type was expected, found: `",
                             ty2->name(), "`");
         }
-        be->type = this->type_table.int_type;
+        /// Codegen ///
+        __expr_context.llval = llvm_op(op, res1, res2);
+        /// End of Codegen ///
+        return this->type_table.int_type;
     } break;
     case EXPR::ARR_LOOK:
     {
         debug_print("MainTypeCheck::ArrayLookupExpression\n");
         assert(be->e1);
         assert(be->e2);
-        be->e1->accept(this);
-        Type *ty1 = be->e1->type;
-        be->e2->accept(this);
-        Type *ty2 = be->e2->type;
+        Type *ty1 = be->e1->accept(this);
+        llvalue_t ptr = __expr_context.llval;
+        Type *ty2 = be->e2->accept(this);
+        llvalue_t index = __expr_context.llval;
 
         if (ty1 != this->type_table.int_arr_type) {
             typecheck_error(expr->loc, "Bad left operand for index operator `[]`. ",
                             "Operand of int array type was expected, found: `",
                             ty1->name(), "`");
         }
-        // TODO: Do basic constant-folding to check if the index is negative.
         if (ty2 != this->type_table.int_type) {
             typecheck_error(expr->loc, "Bad index expression for index operator `[]`. ",
                             "Operand of int type was expected, found: `",
                             ty1->name(), "`");
         }
-        be->type = this->type_table.int_type;
+        // Check for negative index 
+        if (index.kind == LLVALUE::CONST && index.val < 0) {
+            typecheck_error(expr->loc, "Index with constant value: ", index.val,
+                            " is out of bounds (negative)");
+        }
+
+        /// Codegen ///
+
+        // Check if index < len
+        // Note: The length is never constant, so we can't
+        // fully constant-fold this even if the index is constant (
+        // we only partially constant-fold this in that the constant
+        // value is used inline).
+        lbl_pair_t lbls_len_check;
+        lbls_len_check.construct("bounds_len");
+        llvalue_t len = llvm_load(ptr);
+        llvalue_t cmp_res = llvm_op('<', index, len);
+        // Mind the order of labels
+        llvm_branch_cond(cmp_res, lbls_len_check.end, lbls_len_check.start);
+
+        llvm_gen_lbl(lbls_len_check.start);
+        // TODO: Do something better
+        emit("    EXIT\n\n");
+        llvm_gen_lbl(lbls_len_check.end);
+
+
+        // You can't have a constant of pointer value.
+        // TODO: Uncomment
+        //assert(ptr.kind == LLVALUE::REG);
+        llvalue_t el;
+        if (index.kind == LLVALUE::CONST) {
+            // If index is constant and negative, we check it above.
+            // Take into consideration the 4 bytes of the length.
+            index.val += 4;
+        } else {
+            lbl_pair_t lbls_neg_check;
+            lbls_neg_check.construct("bounds_neg");
+            llvalue_t cmp_res = llvm_op('<', index, {LLVALUE::CONST, 0});
+            llvm_branch_cond(cmp_res, lbls_neg_check.start, lbls_neg_check.end);
+
+            llvm_gen_lbl(lbls_neg_check.start);
+            // TODO: Do something better
+            emit("    EXIT\n\n");
+            llvm_gen_lbl(lbls_neg_check.end);
+            index = llvm_op('+', index, {LLVALUE::CONST, 4});
+        }
+        ptr = llvm_getelementptr(ptr, index);
+        __expr_context.llval = llvm_load(ptr);
+
+        /// End of Codegen ///
+
+        return this->type_table.int_type;
     } break;
     case EXPR::MSG_SEND:
     {
+        // TODO: -- Codegen --
+        // One possible implementation is to create a FuncArr of llvalue_t and
+        // generate the expressions (preferably in reverse order to follow
+        // the usual calling conventions although I'm not sure whether llvm
+        // handles that - probably not). Note that this buf should allocate
+        // memory from a method-persistent memory arena (that currently is
+        // FUNC).
         debug_print("MainTypeCheck::MessageSendExpression\n");
         assert(be->e1);
-        be->e1->accept(this);
-        IdType *type = (IdType*) be->e1->type;
+        IdType *type = (IdType*) be->e1->accept(this);
         assert(type);
 
         if (type->kind == TY::UNDEFINED) {
             typecheck_error(expr->loc, "In message send expression, Identifier: `",
                             expr->id, "` does not denote a known type");
-            be->type = this->type_table.undefined_type;
-            return;
+            return this->type_table.undefined_type;
         }
         if (!type->is_IdType()) {
-            typecheck_error(expr->loc, "Bad dereferenced operand for message-",
+            typecheck_error(expr->loc, "Bad dereferenced operand for message",
                             "send operator `.`. ", "Operand of user-defined ",
                             "type was expected, found: `", type->name(), "`");
-            be->type = this->type_table.undefined_type;
-            return;
+            return this->type_table.undefined_type;
         }
 
         FuncArr<Type*> expr_list_types(be->msd->expr_list.len);
         for (Expression *e : be->msd->expr_list) {
-            e->accept(this);
-            expr_list_types.push(e->type);
+            expr_list_types.push(e->accept(this));
         }
         Type *ret_type = NULL;
         if (!deduce_method(expr_list_types, be->msd->id, type, &ret_type)) {
@@ -888,18 +1107,16 @@ void MainTypeCheckVisitor::visit(Expression *expr) {
         }
         // Assume that the user wanted the first method in the list
         if (!ret_type) {
-            be->type = this->type_table.undefined_type;
-        } else {
-            be->type = ret_type;
+            return this->type_table.undefined_type;
         }
+        return ret_type;
     } break;
-    default: assert(0);
+    default: assert(0); return this->type_table.undefined_type;
     }
 }
 
 /* Statements
  */
-// TODO: Global error counting to known whether there was error in statement.
 void MainTypeCheckVisitor::visit(BlockStatement *block_stmt) {
     LOG_SCOPE;
     debug_print("MainTypeCheck::BlockStatement\n");
@@ -920,8 +1137,7 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
                         asgn_stmt->id, "` is not defined");
     }
     assert(asgn_stmt->rhs);
-    asgn_stmt->rhs->accept(this);
-    Type *rhs_type = asgn_stmt->rhs->type;
+    Type *rhs_type = asgn_stmt->rhs->accept(this);
     if (!compatible_types(lhs->type, rhs_type)) {
         typecheck_error(asgn_stmt->loc, "Incompatible types: `",
                         rhs_type->name(), "` can't be converted to `",
@@ -941,16 +1157,14 @@ void MainTypeCheckVisitor::visit(ArrayAssignmentStatement *arr_asgn_stmt) {
                         arr_asgn_stmt->id, "` is not defined");
     }
     assert(arr_asgn_stmt->index);
-    arr_asgn_stmt->index->accept(this);
-    Type *index_type = arr_asgn_stmt->index->type;
+    Type *index_type = arr_asgn_stmt->index->accept(this);
     if (index_type != this->type_table.int_type) {
         typecheck_error(arr_asgn_stmt->loc, "In array assignment statement, the ",
                         "index expression must have `int` type but has: `",
                         index_type->name(), "`");
     }
     assert(arr_asgn_stmt->rhs);
-    arr_asgn_stmt->rhs->accept(this);
-    Type *rhs_type = arr_asgn_stmt->rhs->type;
+    Type *rhs_type = arr_asgn_stmt->rhs->accept(this);
     if (rhs_type != this->type_table.int_type) {
         typecheck_error(arr_asgn_stmt->loc, "In array assignment statement, the ",
                         "right-hand-side expression must have `int` type but has: `",
@@ -962,8 +1176,7 @@ void MainTypeCheckVisitor::visit(ArrayAssignmentStatement *arr_asgn_stmt) {
 void MainTypeCheckVisitor::visit(IfStatement *if_stmt) {
     LOG_SCOPE;
     debug_print("MainTypeCheck::IfStatement\n");
-    if_stmt->cond->accept(this);
-    Type *cond = if_stmt->cond->type;
+    Type *cond = if_stmt->cond->accept(this);
     if (cond != this->type_table.bool_type) {
         typecheck_error(if_stmt->loc, "In if statement, the ",
                         "condition expression must have `boolean` type but has: `",
@@ -978,8 +1191,7 @@ void MainTypeCheckVisitor::visit(IfStatement *if_stmt) {
 void MainTypeCheckVisitor::visit(WhileStatement *while_stmt) {
     LOG_SCOPE;
     debug_print("MainTypeCheck::WhileStatement\n");
-    while_stmt->cond->accept(this);
-    Type *cond = while_stmt->cond->type;
+    Type *cond = while_stmt->cond->accept(this);
     if (cond != this->type_table.bool_type) {
         typecheck_error(while_stmt->loc, "In while statement, the ",
                         "condition expression must have `boolean` type but has: `",

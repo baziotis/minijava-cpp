@@ -80,8 +80,8 @@ struct Expression : public ParsingPersistentAllocation {
     }
 
     // Pass 2
-    void accept(MainTypeCheckVisitor *v) {
-        v->visit(this);
+    Type *accept(MainTypeCheckVisitor *v) {
+        return v->visit(this);
     }
 };
 
