@@ -16,6 +16,7 @@ extern config_t config;
 
 /* Errors
  */
+// TODO: Stop typechecking altogether after a threshold of errors.
 static int num_global_typecheck_errors;
 template <typename... Args> 
 void typecheck_error_no_ln(location_t __loc, Args... args) {
@@ -135,6 +136,13 @@ bool typecheck(Goal *goal) {
     // Print types that could not be inserted. This can
     // happen if the types used are more than the type
     // declarations. See TypeTable.
+    // TODO: The types in `could_not_be_inserted` might actually have a
+    // declaration. Consider that if say we have space in the table for 2
+    // type declarations. The declarations that _exist_ are for A and D.
+    // In A, let's say we use A, B, C and D in that order. D will be inserted
+    // last and it won't be in the type table. It will be in the
+    // `could_not_be_inserted` because of lack of space. But D
+    // actually has a declaration.
     for (IdType *type : type_table.could_not_be_inserted) {
         typecheck_error(type->loc, "Type `", type->id, "` has not been ",
                         "defined");
@@ -308,7 +316,7 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
         // - A method must not conflict with a field of the current class.
         // - A method can conflict with a method of the parent class:
         //   -- If the methods have the same return type (but possibly different formal
-        //      parameters), it's valid overriding.Otherwise,
+        //      parameters), it's valid overriding.
         //   -- Otherwise, if the methods have different return types but the types
         //      of the parameters don't match _exactly_, then it's valid
         //      overriding.

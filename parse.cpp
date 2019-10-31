@@ -68,28 +68,6 @@ static bool expect_token_in_rule(TOK kind, const char *rule, bool advance = fals
     return res;
 }
 
-static bool expect_interned_id(const char *id) {
-    if (EOI_has_been_found) return false;
-    if (is_token(TOK::EOI)) {
-        EOI_has_been_found = true;
-    }
-    bool res;
-    if (is_token(TOK::ID)) {
-        if (token.id == id) {
-            next_token();
-            return true;
-        } else {
-            syntax_error("Expected `", id, "`, found `", token.id, "`");
-            res = false;
-        }
-    } else {
-        syntax_error("Expected `", id, "`, found `", token.kind, "`");
-        res = false;
-    }
-    next_token();
-    return res;
-}
-    
 /// If the the current token is of `kind`, return `true`
 /// and advance. Otherwise, return `false`.
 static bool match_token(TOK kind) {
