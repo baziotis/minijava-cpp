@@ -65,6 +65,77 @@ void full_typecheck(Goal *goal, TypeTable type_table) {
     goal->accept(&main_visitor);
 }
 
+static bool params_match(Method *m1, Method *m2) {
+    if (m1->param_len != m2->param_len) return false;
+    size_t it = 0;
+    for (Local *p1 : m1->locals) {
+        Local *p2 = m2->locals[it];
+        if (p1->type != p2->type) return false;
+        if (it == m1->param_len) break;
+    }
+    return true;
+}
+
+static void print_param_types(Method *method) {
+    size_t param_len = method->param_len;
+    for (size_t i = 0; i != param_len; ++i) {
+        Local *param = method->locals[i];
+        printf("%s", param->type->name());
+        if (i + 1 != param_len) {
+            printf(", ");
+        }
+    }
+}
+
+static Method *lookup_method_parent(const char *id, IdType *cls, IdType **ret_parent = NULL) {
+    IdType *runner = cls;
+    while (runner->parent) {
+        runner = runner->parent;
+        Method *method = runner->methods.find(id);
+        if (method) {
+            *ret_parent = runner;
+            return method;
+        }
+        // Cyclic inheritance, we issue error elsewhere.
+        if (runner == cls) break;
+    }
+    return NULL;
+}
+
+static Method *lookup_method(const char *id, IdType *cls) {
+    // Check current class's methods
+    Method *method = cls->methods.find(id);
+    if (method) {
+        return method;
+    }
+    // Check parent's methods (account for cyclic inheritance).
+    return lookup_method_parent(id, cls);
+}
+
+
+void check_method_for_overrding(Method *method, IdType *type) {
+    IdType *parent;
+    Method *method_parent = lookup_method_parent(method->id, type, &parent);
+    if (method_parent) {
+        bool match = params_match(method, method_parent);
+        if (method_parent->ret_type != method->ret_type) {
+            // Note: If they _match exactly_ it is an error. Otherwise,
+            // it can be disambiguated through the parameters.
+            if (match) {
+                typecheck_error_no_ln(method->loc, method->id, "(");
+                print_param_types(method);
+                printf(") in `%s` can't override %s(", type->id, method_parent->id);
+                print_param_types(method_parent);
+                printf(") in `%s`\n", parent->id);
+                printf("  Mismatch in return types `%s` and `%s`\n",
+                       method->ret_type->name(), method_parent->ret_type->name());
+            }
+        } else if (match) {
+            method->overrides = true;
+        }
+    }
+}
+
 void TypeTable::compute_and_print_offsets_for_type(IdType *type) {
     assert(type);
     if (type->state == STATE::RESOLVING || type->state == STATE::RESOLVED) {
@@ -103,6 +174,7 @@ void TypeTable::compute_and_print_offsets_for_type(IdType *type) {
 
     running_offset = start_methods;
     for (Method *method: type->methods) {
+        check_method_for_overrding(method, type);
         if (!method->overrides) {
             if (config.offsets) {
                 printf("%s.%s: %zd\n", type->id, method->id, running_offset);
@@ -119,11 +191,30 @@ void TypeTable::compute_and_print_offsets_for_type(IdType *type) {
     type->state = STATE::RESOLVED;
 }
 
+bool check_cyclic_inheritance(IdType *type) {
+    IdType *runner = type;
+    while (runner->parent) {
+        runner = runner->parent;
+        if (runner == type) {
+            typecheck_error(type->loc, "Cyclic inheritance ",
+                            "involving `", type->id, "`");
+            return true;
+        }
+    }
+    return false;
+}
+
 void TypeTable::offset_computation() {
     for (IdType *type : type_table) {
-        compute_and_print_offsets_for_type(type);
+        // Note: This check needs to happen here because
+        // otherwise the computing of offsets won't work.
+        // Cyclic inheritance detection
+        if (!check_cyclic_inheritance(type)) {
+            compute_and_print_offsets_for_type(type);
+        }
     }
 }
+
 
 bool typecheck(Goal *goal) {
     typecheck_init();
@@ -147,12 +238,14 @@ bool typecheck(Goal *goal) {
         typecheck_error(type->loc, "Type `", type->id, "` has not been ",
                         "defined");
     }
+
+    // Offset computation
+    type_table.offset_computation();
+
     // Pass 2
     full_typecheck(goal, type_table);
     
     if (num_global_typecheck_errors == 0) {
-        // Offset computation
-        type_table.offset_computation();
     } else {
         return false;
     }
@@ -434,92 +527,14 @@ void MainTypeCheckVisitor::visit(MainClass *main_class) {
     //debug_print("MainTypeCheck::MainClass\n");
 }
 
-static Method *lookup_method_parent(const char *id, IdType *cls, IdType **ret_parent = NULL) {
-    IdType *runner = cls;
-    while (runner->parent) {
-        runner = runner->parent;
-        Method *method = runner->methods.find(id);
-        if (method) {
-            *ret_parent = runner;
-            return method;
-        }
-        // Cyclic inheritance, we issue error elsewhere.
-        if (runner == cls) break;
-    }
-    return NULL;
-}
-
-static Method *lookup_method(const char *id, IdType *cls) {
-    // Check current class's methods
-    Method *method = cls->methods.find(id);
-    if (method) {
-        return method;
-    }
-    // Check parent's methods (account for cyclic inheritance).
-    return lookup_method_parent(id, cls);
-}
-
-static bool params_match(Method *m1, Method *m2) {
-    if (m1->param_len != m2->param_len) return false;
-    size_t it = 0;
-    for (Local *p1 : m1->locals) {
-        Local *p2 = m2->locals[it];
-        if (p1->type != p2->type) return false;
-        if (it == m1->param_len) break;
-    }
-    return true;
-}
-
-static void print_param_types(Method *method) {
-    size_t param_len = method->param_len;
-    for (size_t i = 0; i != param_len; ++i) {
-        Local *param = method->locals[i];
-        printf("%s", param->type->name());
-        if (i + 1 != param_len) {
-            printf(", ");
-        }
-    }
-}
-
 void MainTypeCheckVisitor::visit(IdType *type) {
     LOG_SCOPE;
     assert(type->is_IdType());
     assert(type->is_defined());
     debug_print("MainTypeCheck::IdType %s\n", type->id);
 
-    // Cyclic inheritance detection
-    IdType *runner = type;
-    while (runner->parent) {
-        runner = runner->parent;
-        if (runner == type) {
-            typecheck_error(type->loc, "Cyclic inheritance ",
-                            "involving `", type->id, "`");
-            break;
-        }
-    }
-
     this->curr_class = type;
     for (Method *method : type->methods) {
-        IdType *parent;
-        Method *method_parent = lookup_method_parent(method->id, type, &parent);
-        if (method_parent) {
-            bool match = params_match(method, method_parent);
-            if (method_parent->ret_type != method->ret_type) {
-                // Note: If they _match exactly_ it is an error. Otherwise,
-                // it can be disambiguated through the parameters.
-                if (match) {
-                    typecheck_error_no_ln(method->loc, method->id, "(");
-                    print_param_types(method);
-                    printf(") in `%s` can't override %s(", type->id, method_parent->id);
-                    print_param_types(method_parent);
-                    printf(") in `%s`\n", parent->id);
-                    printf("  Mismatch in return types `%s` and `%s`\n",
-                           method->ret_type->name(), method_parent->ret_type->name());
-                }
-            } else if (match) {
-                method->overrides = true;
-            }
-        }
         method->accept(this);
     }
     this->curr_class = NULL;
