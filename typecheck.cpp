@@ -138,12 +138,27 @@ void check_method_for_overrding(Method *method, IdType *type) {
 
 void TypeTable::compute_and_print_offsets_for_type(IdType *type) {
     assert(type);
-    if (type->state == STATE::RESOLVING || type->state == STATE::RESOLVED) {
-        // If in STATE::RESOLVING, we have cyclic inheritance.
-        // We issue error elsewhere. Otherwise, we have already
-        // resolved this type.
+    if (type->state == STATE::RESOLVING) {
+        // We have cyclic inheritance.
+        typecheck_error_no_ln(type->loc, "Cyclic inheritance ",
+                        "involving: ");
+        // Iterate the inheritance tree and print the whole cycle.
+        IdType *runner = type;
+        while (runner->parent) {
+            printf("%s -> ", runner->id);
+            runner = runner->parent;
+            if (runner == type) {
+                // reached the start of the cycle again.
+                break;
+            }
+        }
+        printf("%s\n", type->id);
+        return;
+    } else if (type->state == STATE::RESOLVED) {
+        // We have already processed this type, just return.
         return;
     }
+    type->state = STATE::RESOLVING;
     IdType *parent = type->parent;
     size_t start_fields = 0;
     size_t start_methods = 0;
@@ -191,27 +206,9 @@ void TypeTable::compute_and_print_offsets_for_type(IdType *type) {
     type->state = STATE::RESOLVED;
 }
 
-bool check_cyclic_inheritance(IdType *type) {
-    IdType *runner = type;
-    while (runner->parent) {
-        runner = runner->parent;
-        if (runner == type) {
-            typecheck_error(type->loc, "Cyclic inheritance ",
-                            "involving `", type->id, "`");
-            return true;
-        }
-    }
-    return false;
-}
-
 void TypeTable::offset_computation() {
     for (IdType *type : type_table) {
-        // Note: This check needs to happen here because
-        // otherwise the computing of offsets won't work.
-        // Cyclic inheritance detection
-        if (!check_cyclic_inheritance(type)) {
-            compute_and_print_offsets_for_type(type);
-        }
+        compute_and_print_offsets_for_type(type);
     }
 }
 
@@ -246,10 +243,9 @@ bool typecheck(Goal *goal) {
     full_typecheck(goal, type_table);
     
     if (num_global_typecheck_errors == 0) {
-    } else {
-        return false;
+        return true;
     }
-    return true;
+    return false;
 }
 
 /* Declaration Visitor

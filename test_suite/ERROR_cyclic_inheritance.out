@@ -1,5 +1,2 @@
-ERROR_cyclic_inheritance.java: 10:  Semantic Error: Cyclic inheritance involving `A`
-ERROR_cyclic_inheritance.java: 13:  Semantic Error: Cyclic inheritance involving `B`
-ERROR_cyclic_inheritance.java: 20:  Semantic Error: Cyclic inheritance involving `C`
-ERROR_cyclic_inheritance.java: 26:  Semantic Error: Cyclic inheritance involving `E`
-ERROR_cyclic_inheritance.java: 23:  Semantic Error: Cyclic inheritance involving `D`
+ERROR_cyclic_inheritance.java: 10:  Semantic Error: Cyclic inheritance involving: A -> B -> A
+ERROR_cyclic_inheritance.java: 20:  Semantic Error: Cyclic inheritance involving: C -> E -> D -> C
