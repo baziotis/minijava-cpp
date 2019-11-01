@@ -1,3 +1,5 @@
+%class.A = type { i8 (...)* }
+
     %3 = load i32, i32* %1, align 4
     %4 = icmp slt i32 %2, %3
     br i1 %4, label bounds_len_end1, label bounds_len1

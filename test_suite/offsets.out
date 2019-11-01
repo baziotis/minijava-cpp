@@ -1,8 +1,8 @@
+A.foo: 0
+A.fa: 8
 A.i: 0
 A.flag: 4
 A.j: 5
-A.foo: 0
-A.fa: 8
+B.bla: 16
 B.type: 9
 B.k: 17
-B.bla: 16

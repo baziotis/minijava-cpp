@@ -6,12 +6,12 @@
 #include "common.h"
 #include "debug_print.h"
 #include "llvm.h"
+#include "buf.h"
 
 ExprContext __expr_context;
 
 // TODO: REMOVE IT
 extern config_t config;
-
 
 static long reg;
 
@@ -29,6 +29,8 @@ long gen_lbl() {
     ++lbl;
     return lbl;
 }
+
+int j = 0;
 
 void emit(const char *fmt, ...) {
     if (config.codegen) {
@@ -147,7 +149,7 @@ llvalue_t llvm_calloc(int sz) {
     v.kind = LLVALUE::REG;
     v.reg = gen_reg();
     print_codegen_indentation();
-    emit("%%%ld = call noalias i8* @calloc(i64 1, i64 %d)\n", v.reg, sz);
+    emit("%%%ld = call noalias i8* @calloc(i32 1, i32 %d)\n", v.reg, sz);
     return v;
 }
 

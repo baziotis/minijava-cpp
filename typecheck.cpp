@@ -10,6 +10,7 @@
 #include "error.h"          // log()
                             // WARNING: error.h gives access to the global `loc`
 #include "hash_table.h"
+#include "llvm.h"
 #include "str_intern.h"
 
 extern config_t config;
@@ -166,28 +167,18 @@ void TypeTable::compute_and_print_offsets_for_type(IdType *type) {
         compute_and_print_offsets_for_type(parent);
         start_fields = parent->fields_end;
         start_methods = parent->methods_end;
-    }
-    
-    size_t running_offset = start_fields;
-    for (Local *field : type->fields) {
-        field->offset = running_offset;
-        if (config.offsets) {
-            printf("%s.%s: %zd\n", type->id, field->id, field->offset);
-        }
-        if (field->type == this->bool_type) {
-            running_offset += 1;
-        } else if (field->type == this->int_type) {
-            running_offset += 4;
-        } else if (field->type == this->int_arr_type ||
-                   field->type->is_IdType()) {
-            running_offset += 8;
-        }
+        // Inherits, so include the parent at the start of the type.
+        emit("%%class.%s = type { %%class.%s", type->id, parent->id);
+    } else {
+        // The first parent in the inheritance tree - create
+        // a vptr.
+        emit("%%class.%s = type { i8 (...)*", type->id);
     }
 
-    size_t fields_size = running_offset - start_fields;
-    
-
-    running_offset = start_methods;
+    // Process methods first to know how many methods we have so we
+    // can emit the respective virtual pointer.
+    int num_methods = start_methods / 8;
+    size_t running_offset = start_methods;
     for (Method *method: type->methods) {
         check_method_for_overrding(method, type);
         if (!method->overrides) {
@@ -196,10 +187,38 @@ void TypeTable::compute_and_print_offsets_for_type(IdType *type) {
             }
             method->offset = running_offset;
             running_offset += 8;
+            ++num_methods;
         }
     }
-
     size_t methods_size = running_offset - start_methods;
+
+    
+    running_offset = start_fields;
+    for (Local *field : type->fields) {
+        field->offset = running_offset;
+        if (config.offsets) {
+            printf("%s.%s: %zd\n", type->id, field->id, field->offset);
+        }
+        emit(", ");
+        if (field->type == this->bool_type) {
+            emit("i1");
+            running_offset += 1;
+        } else if (field->type == this->int_type) {
+            emit("i32");
+            running_offset += 4;
+        } else if (field->type == this->int_arr_type) {
+            emit("i32*");
+            running_offset += 8;
+        } else {
+            IdType *idtype = field->type->is_IdType();
+            assert(idtype);
+            emit("%%class.%s*", idtype->id);
+            running_offset += 8;
+        }
+    }
+    emit(" }\n");
+
+    size_t fields_size = running_offset - start_fields;
 
     type->fields_end = start_fields + fields_size;
     type->methods_end = start_methods + methods_size;
@@ -210,6 +229,7 @@ void TypeTable::offset_computation() {
     for (IdType *type : type_table) {
         compute_and_print_offsets_for_type(type);
     }
+    emit("\n");
 }
 
 bool typecheck(Goal *goal) {
@@ -393,8 +413,10 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
             field = ld->accept(this);
             // All fields are considered initialized.
             field->initialized = true;
-            //field->type->print();
             type->fields.insert(field->id, field);
+            /// Codegen ///
+            
+            /// End of Codegen ///
         }
     }
     for (MethodDeclaration *md : type_decl->methods) {
@@ -555,7 +577,6 @@ static bool compatible_types(Type *lhs, Type *rhs) {
     return false;
 }
 
-#include "llvm.h"
 extern ExprContext __expr_context;
 
 void MainTypeCheckVisitor::visit(Method *method) {
@@ -770,7 +791,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         assert(this->curr_class);
         return this->curr_class;
     } break;
-    case EXPR::ALLOC: // TODO: Codegen
+    case EXPR::ALLOC:
     {
         debug_print("MainTypeCheck::AllocationExpression\n");
         // Find the type of the Identifier.
@@ -785,6 +806,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
                             expr->id, "` does not denote a user-defined type");
             return this->type_table.undefined_type;
         }
+        llvm_calloc(type->sizeof_());
         return type;
     } break;
     case EXPR::ARR_ALLOC: // TODO: Codegen

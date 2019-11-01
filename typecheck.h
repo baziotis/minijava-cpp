@@ -258,11 +258,21 @@ enum class STATE {
     RESOLVED
 };
 
+struct VTableMethod : public TypeCheckCustomAllocation {
+    Type *ret_type;
+    Buf<Type*> params;
+};
+
+struct VTable : public TypeCheckCustomAllocation {
+    Buf<VTable*> methods;
+};
+
 struct IdType : public Type {
+    const char *id;
     SerializedHashTable<Local*> fields;
     SerializedHashTable<Method*> methods;
     IdType *parent;
-    const char *id;
+    VTable *vtable;
 
     size_t fields_end, methods_end;
     STATE state;
