@@ -1,4 +1,5 @@
 #include "alloc.h"
+#include "typecheck.h"
 
 long gen_lbl();
 
@@ -100,7 +101,7 @@ llvalue_t llvm_op(int op, llvalue_t res1, llvalue_t res2);
 llvalue_t llvm_getelementptr(llvalue_t ptr, llvalue_t index);
 llvalue_t llvm_load(llvalue_t ptr);
 llvalue_t not_llvalue(llvalue_t v);
-llvalue_t llvm_calloc(int sz);
+llvalue_t llvm_calloc(Type *type, llvalue_t sz);
 void llvm_gen_lbl(llvm_label_t l);
 void llvm_branch_cond(llvalue_t cond, llvm_label_t l1, llvm_label_t l2);
 void llvm_branch(llvm_label_t l);

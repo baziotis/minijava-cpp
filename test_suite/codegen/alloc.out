@@ -1,0 +1,6 @@
+%class.A = type { i8 (...)* }
+
+    %1 = call noalias i8* @calloc(i32 1, i32 8)
+    %2 = bitcast i8* %1 to %class.A*
+    %3 = call noalias i8* @calloc(i32 1, i32 56)
+    %4 = bitcast i8* %3 to i32*

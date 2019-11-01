@@ -588,10 +588,16 @@ void MainTypeCheckVisitor::visit(Method *method) {
 
     // We're starting from 1, because register 0
     // is always reserved for the 'this' pointer.
+    // Set a register _only_ for the parameters.
     ssize_t param_counter = 1;
+    ssize_t param_len = method->param_len;
     for (Local *local : method->locals) {
+        if (!param_len) {
+            break;
+        }
         local->reg = param_counter;
         ++param_counter;
+        --param_len;
     }
     set_reg(param_counter);
 
@@ -743,11 +749,15 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
 
         /// Codegen ///
 
-        // TODO: If the id is not local (parameter or variable), it will not have
-        // a register assigned. Add the functionality to check if it has one
+        // TODO: If the id is not a parameter, it will not have a register assigned.
+        // For fields:
+        // Add the functionality to check if it has one
         // and if not, load the value into a register from the `this` pointer
         // (register %0). This should be done according to where the id exists
         // in the class (or the parent class etc.)
+        // For locals:
+        // This should all have an alloca. Load their value into a register
+        // and assign them a register.
         __expr_context.llval.kind = LLVALUE::REG;
         __expr_context.llval.reg = local->reg;
 
@@ -806,10 +816,12 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
                             expr->id, "` does not denote a user-defined type");
             return this->type_table.undefined_type;
         }
-        llvm_calloc(type->sizeof_());
+        /// Codegen ///
+        __expr_context.llval = llvm_calloc(type, {LLVALUE::CONST, (int)type->sizeof_()});
+        /// End of Codegen ///
         return type;
     } break;
-    case EXPR::ARR_ALLOC: // TODO: Codegen
+    case EXPR::ARR_ALLOC:
     {
         debug_print("MainTypeCheck::ArrayAllocationExpression\n");
         assert(expr->e1);
@@ -818,6 +830,24 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             typecheck_error(expr->loc, "In array allocation expression, ",
                             "the index expression must be of integer type.");
         }
+        llvalue_t len = __expr_context.llval;
+        // Check for negative size
+        if (len.kind == LLVALUE::CONST && len.val < 0) {
+            typecheck_error(expr->loc, "Length of array allocation with ",
+                            "constant value: ", len.val, " is negative.");
+        }
+        // TODO: Do a check when the value is not const.
+        /// Codegen ///
+        constexpr int sizeof_int = 4;
+        Type *int_arr_type = this->type_table.int_arr_type;
+        if (len.kind == LLVALUE::CONST) {
+            __expr_context.llval = llvm_calloc(int_arr_type, {LLVALUE::CONST,
+                                                   (int)(len.val * sizeof_int)});
+        } else {
+            llvalue_t size = llvm_op('*', len, {LLVALUE::CONST, 4});
+            __expr_context.llval = llvm_calloc(int_arr_type, size);
+        }
+        /// End of Codegen ///
         return this->type_table.int_arr_type;
     } break;
     case EXPR::ARR_LEN:

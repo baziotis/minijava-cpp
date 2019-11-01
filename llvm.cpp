@@ -3,10 +3,11 @@
 #include <stdarg.h>
 #include <string.h>
 
+#include "buf.h"
 #include "common.h"
 #include "debug_print.h"
 #include "llvm.h"
-#include "buf.h"
+#include "typecheck.h"
 
 ExprContext __expr_context;
 
@@ -144,12 +145,27 @@ llvalue_t not_llvalue(llvalue_t v) {
     return v;
 }
 
-llvalue_t llvm_calloc(int sz) {
+llvalue_t llvm_calloc(Type *type, llvalue_t sz) {
+    long reg_calloc = gen_reg();
+    print_codegen_indentation();
+    if (sz.kind == LLVALUE::CONST) {
+        emit("%%%ld = call noalias i8* @calloc(i32 1, i32 %d)\n", reg_calloc, sz.val);
+    } else {
+        emit("%%%ld = call noalias i8* @calloc(i32 1, i32 %%%ld)\n", reg_calloc, sz.reg);
+    }
     llvalue_t v;
     v.kind = LLVALUE::REG;
     v.reg = gen_reg();
+    // Generate the bitcast
     print_codegen_indentation();
-    emit("%%%ld = call noalias i8* @calloc(i32 1, i32 %d)\n", v.reg, sz);
+    IdType *idtype = type->is_IdType();
+    if (idtype) {
+        emit("%%%ld = bitcast i8* %%%ld to %%class.%s*\n", v.reg, reg_calloc, idtype->id);
+    } else if (type->kind == TY::ARR) {
+        emit("%%%ld = bitcast i8* %%%ld to i32*\n", v.reg, reg_calloc);
+    } else {
+        assert(0);
+    }
     return v;
 }
 
