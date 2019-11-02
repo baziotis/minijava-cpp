@@ -665,9 +665,6 @@ static Local *lookup_local(const char *id, Method *method, IdType *cls) {
     return NULL;
 }
 
-// Buf with memory arena MEM::FUNC
-template<typename T> using FuncArr = Array<T, MEM::FUNC>;
-
 static bool check_expr_list_against_method(FuncArr<Type*> expr_list, Method *method) {
     if (expr_list.len != method->param_len) {
         return false;
@@ -718,7 +715,6 @@ static Type *typecheck_and_helper(bool is_correct, Expression *expr,
     }
     return undefinedty;
 }
-
 
 // IMPORTANT: DO NOT check if a type is undefined with equality test with
 // type_table.undefined_type. Check a note above on a full explanation.
@@ -1187,8 +1183,11 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         }
 
         FuncArr<Type*> expr_list_types(be->msd->expr_list.len);
+        FuncArr<llvalue_t> args(be->msd->expr_list.len);
         for (Expression *e : be->msd->expr_list) {
-            expr_list_types.push(e->accept(this));
+            Type *type = e->accept(this);
+            args.push(__expr_context.llval);
+            expr_list_types.push(type);
         }
         Type *ret_type = NULL;
         if (!deduce_method(expr_list_types, be->msd->id, type, &ret_type)) {
@@ -1198,7 +1197,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         if (!ret_type) {
             return this->type_table.undefined_type;
         }
-        __expr_context.llval.kind = LLVALUE::REG;
+        __expr_context.llval = llvm_call(ret_type, be->msd->id, expr_list_types, args);
         return ret_type;
     } break;
     default: assert(0); return this->type_table.undefined_type;

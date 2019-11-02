@@ -18,4 +18,8 @@ struct config_t {
     bool codegen;
 };
 
+#include "array.h"
+#include "alloc.h"
+template<typename T> using FuncArr = Array<T, MEM::FUNC>;
+
 #endif

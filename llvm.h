@@ -98,9 +98,6 @@ struct ExprContext {
 void set_reg(ssize_t v);
 void emit(const char *fmt, ...);
 llvalue_t llvm_op_const(int op, int val1, int val2);
-void print_const_llvalue(llvalue_t v, bool its_bool);
-void print_llvalue(llvalue_t v, bool its_bool);
-void print_codegen_indentation();
 llvalue_t llvm_op(int op, llvalue_t res1, llvalue_t res2);
 llvalue_t llvm_bitcast_id_ptr(IdType *type, llvalue_t ptr);
 llvalue_t llvm_bitcast(Type *type, llvalue_t ptr);
@@ -114,3 +111,4 @@ void llvm_gen_lbl(llvm_label_t l);
 void llvm_branch_cond(llvalue_t cond, llvm_label_t l1, llvm_label_t l2);
 void llvm_branch(llvm_label_t l);
 llvalue_t llvm_and_phi(llvm_label_t l1, llvalue_t v1, llvm_label_t l2);
+llvalue_t llvm_call(Type *ret_type, const char *func_name, FuncArr<Type*> types, FuncArr<llvalue_t> values);

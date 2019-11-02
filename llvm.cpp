@@ -85,7 +85,7 @@ llvalue_t llvm_op_const(int op, int val1, int val2) {
     return v;
 }
 
-void print_const_llvalue(llvalue_t v, bool its_bool) {
+static void print_const_llvalue(llvalue_t v, bool its_bool) {
     assert(v.kind == LLVALUE::CONST);
     if (its_bool) {
         if (v.val == 0) {
@@ -100,7 +100,7 @@ void print_const_llvalue(llvalue_t v, bool its_bool) {
     }
 }
 
-void print_llvalue(llvalue_t v, bool its_bool = false) {
+static void llvm_print_llvalue(llvalue_t v, bool its_bool = false) {
     if (v.kind == LLVALUE::CONST) {
         print_const_llvalue(v, its_bool);
     } else {
@@ -108,7 +108,7 @@ void print_llvalue(llvalue_t v, bool its_bool = false) {
     }
 }
 
-void print_codegen_indentation() {
+static void print_codegen_indentation() {
     for (int i = 0; i != 4; ++i) {
         emit(" ");
     }
@@ -135,9 +135,9 @@ llvalue_t llvm_op(int op, llvalue_t res1, llvalue_t res2) {
     case '&': emit("and i1 "); break;
     default: assert(0);
     }
-    print_llvalue(res1);
+    llvm_print_llvalue(res1);
     emit(", ");
-    print_llvalue(res2);
+    llvm_print_llvalue(res2);
     emit("\n");
     return v;
 }
@@ -190,7 +190,7 @@ llvalue_t llvm_getelementptr_i32(llvalue_t ptr, llvalue_t index) {
     v.kind = LLVALUE::REG;
     print_codegen_indentation();
     emit("%%%ld = getelementptr inbounds i32, i32* %%%ld, i32 ", v.reg, ptr.reg);
-    print_llvalue(index);
+    llvm_print_llvalue(index);
     emit("\n");
     return v;
 }
@@ -297,7 +297,7 @@ void llvm_gen_lbl(llvm_label_t l) {
 void llvm_branch_cond(llvalue_t cond, llvm_label_t l1, llvm_label_t l2) {
     print_codegen_indentation();
     emit("br i1 ");
-    print_llvalue(cond);
+    llvm_print_llvalue(cond);
     emit(", label %s, label %s\n\n", l1.lbl, l2.lbl);
 }
 
@@ -314,7 +314,42 @@ llvalue_t llvm_and_phi(llvm_label_t l1, llvalue_t v1, llvm_label_t l2) {
     assert(v1.kind == LLVALUE::REG || (v1.val == 0 || v1.val == 1));
     print_codegen_indentation();
     emit("%%%ld = phi i1 [ false, %s ], [ ", v.reg, l1.lbl);
-    print_llvalue(v1);
+    llvm_print_llvalue(v1);
     emit(", %s]\n", l2.lbl);
+    return v;
+}
+
+static void llvm_print_lltype(Type *type) {
+    switch (type->kind) {
+    case TY::BOOL: emit("i1 "); break;
+    case TY::INT: emit("i32 "); break;
+    case TY::ARR: emit("i32* "); break;
+    case TY::ID:
+    {
+        IdType *idtype = (IdType*) type;
+        assert(idtype->is_IdType());
+        emit("%%class.%s ", idtype->id);
+    } break;
+    default: assert(0);
+    }
+}
+
+llvalue_t llvm_call(Type *ret_type, const char *func_name, FuncArr<Type*> types, FuncArr<llvalue_t> values) {
+    llvalue_t v;
+    v.kind = LLVALUE::REG;
+    v.reg = gen_reg();
+    print_codegen_indentation();
+    emit("%%%ld = call ", v.reg);
+    llvm_print_lltype(ret_type);
+    emit("%s(", func_name);
+    assert(types.len == values.len);
+    for (size_t i = 0; i != types.len; ++i) {
+        llvm_print_lltype(types[i]);
+        llvm_print_llvalue(values[i]);
+        if (i != types.len - 1) {
+            emit(", ");
+        }
+    }
+    emit(")");
     return v;
 }
