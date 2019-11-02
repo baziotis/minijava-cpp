@@ -682,23 +682,20 @@ static bool check_expr_list_against_method(FuncArr<Type*> expr_list, Method *met
     return true;
 }
 
-static bool deduce_method(FuncArr<Type*> expr_list, const char *method_id, IdType *cls, Type **ret_type) {
+static Method *deduce_method(FuncArr<Type*> expr_list, const char *method_id, IdType *cls) {
     IdType *runner = cls;
     do {
         Method *method = lookup_method(method_id, runner);
         if (method) {
-            if (runner == cls) {  // Only first iteration
-                *ret_type = method->ret_type;
-            }
             if (check_expr_list_against_method(expr_list, method)) {
-                return true;
+                return method;
             }
         }
         runner = runner->parent;
         // Cyclic inheritance, we issue error elsewhere.
         if (runner == cls) break;
     } while (runner);
-    return false;
+    return NULL;
 }
 
 // Only used for EXPR::AND
@@ -1158,13 +1155,6 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     } break;
     case EXPR::MSG_SEND:
     {
-        // TODO: -- Codegen --
-        // One possible implementation is to create a FuncArr of llvalue_t and
-        // generate the expressions (preferably in reverse order to follow
-        // the usual calling conventions although I'm not sure whether llvm
-        // handles that - probably not). Note that this buf should allocate
-        // memory from a method-persistent memory arena (that currently is
-        // FUNC).
         debug_print("MainTypeCheck::MessageSendExpression\n");
         assert(be->e1);
         IdType *type = (IdType*) be->e1->accept(this);
@@ -1189,15 +1179,18 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             args.push(__expr_context.llval);
             expr_list_types.push(type);
         }
-        Type *ret_type = NULL;
-        if (!deduce_method(expr_list_types, be->msd->id, type, &ret_type)) {
+        Method *method = deduce_method(expr_list_types, be->msd->id, type);
+        if (!method) {
             typecheck_error(be->loc, "No matching method with id: `", be->msd->id, "`");
-        }
-        // Assume that the user wanted the first method in the list
-        if (!ret_type) {
+            // TODO: Could we return something better here? Like the type of the first
+            // method in the inheritance tree?
             return this->type_table.undefined_type;
         }
-        __expr_context.llval = llvm_call(ret_type, be->msd->id, expr_list_types, args);
+        Type *ret_type = method->ret_type;
+        // Load the virtual method pointer.
+        llvalue_t vmethod = get_virtual_method(method);
+
+        __expr_context.llval = llvm_call(ret_type, vmethod, expr_list_types, args);
         return ret_type;
     } break;
     default: assert(0); return this->type_table.undefined_type;

@@ -142,6 +142,62 @@ llvalue_t llvm_op(int op, llvalue_t res1, llvalue_t res2) {
     return v;
 }
 
+static void print_lltype(Type *type) {
+    switch (type->kind) {
+    case TY::BOOL: emit("i1"); break;
+    case TY::INT: emit("i32"); break;
+    case TY::ARR: emit("i32*"); break;
+    case TY::ID:
+    {
+        IdType *idtype = (IdType*) type;
+        assert(idtype->is_IdType());
+        emit("%%class.%s*", idtype->id);
+    } break;
+    default: assert(0);
+    }
+}
+
+llvalue_t get_virtual_method(Method *method) {
+    long i8pp = gen_reg();
+    print_codegen_indentation();
+    // Bitcast the `this` (register 0) to i8***.
+    // Note that the vptr is a i8**. So, with this bitcast,
+    // and just loading a i8**, we get the vptr.
+    emit("%%%ld = bitcast i8* %%0 to i8***\n", i8pp);
+    long vptr = gen_reg();
+    print_codegen_indentation();
+    // Get the vptr
+    emit("%%%ld = load i8**, i8*** %%%ld, align 8\n", vptr, i8pp);
+    // Go to the correct offset in the virtual table.
+    long gep = vptr;
+    size_t offset = method->offset;
+    if (offset) {
+        gep = gen_reg();
+        print_codegen_indentation();
+        emit("%%%ld = getelementptr i8*, i8** %%%ld, %zd\n",
+             gep, vptr, offset);
+    }
+    long vmethod_i8 = gen_reg();
+    print_codegen_indentation();
+    // Load the pointer for the method.
+    emit("%%%ld = load i8*, i8** %%%ld\n", vmethod_i8, gep);
+    llvalue_t vmethod;
+    vmethod.kind = LLVALUE::REG;
+    vmethod.reg = gen_reg();
+    print_codegen_indentation();
+    // Finally, bitcast this pointer to the type of the method.
+    emit("%%%ld = bitcast i8* %%%ld to (", vmethod.reg, vmethod_i8);
+    for (size_t i = 0; i != method->param_len; ++i) {
+        Local *param = method->locals[i];
+        print_lltype(param->type);
+        if (i != method->param_len - 1) {
+            emit(", ");
+        }
+    }
+    emit(")*\n");
+    return vmethod;
+}
+
 llvalue_t llvm_bitcast_id_ptr(IdType *type, llvalue_t ptr) {
     assert(ptr.kind == LLVALUE::REG);
     // Assume that `ptr` has type i8*
@@ -319,32 +375,24 @@ llvalue_t llvm_and_phi(llvm_label_t l1, llvalue_t v1, llvm_label_t l2) {
     return v;
 }
 
-static void llvm_print_lltype(Type *type) {
-    switch (type->kind) {
-    case TY::BOOL: emit("i1 "); break;
-    case TY::INT: emit("i32 "); break;
-    case TY::ARR: emit("i32* "); break;
-    case TY::ID:
-    {
-        IdType *idtype = (IdType*) type;
-        assert(idtype->is_IdType());
-        emit("%%class.%s ", idtype->id);
-    } break;
-    default: assert(0);
-    }
-}
-
-llvalue_t llvm_call(Type *ret_type, const char *func_name, FuncArr<Type*> types, FuncArr<llvalue_t> values) {
+llvalue_t llvm_call(Type *ret_type, llvalue_t vmethod, FuncArr<Type*> types, FuncArr<llvalue_t> values) {
     llvalue_t v;
     v.kind = LLVALUE::REG;
     v.reg = gen_reg();
     print_codegen_indentation();
     emit("%%%ld = call ", v.reg);
-    llvm_print_lltype(ret_type);
-    emit("%s(", func_name);
+    // Print the return type
+    print_lltype(ret_type);
+    emit(" ");  // space
+    assert(vmethod.kind == LLVALUE::REG);
+    // Print the register that points to the vmethod
+    emit("%%%ld(", vmethod.reg);
     assert(types.len == values.len);
+    // Print the types of args along with the args themselves
+    // as a comma-separate list
     for (size_t i = 0; i != types.len; ++i) {
-        llvm_print_lltype(types[i]);
+        print_lltype(types[i]);
+        emit(" ");  // space
         llvm_print_llvalue(values[i]);
         if (i != types.len - 1) {
             emit(", ");
