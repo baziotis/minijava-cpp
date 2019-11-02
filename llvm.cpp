@@ -184,8 +184,7 @@ llvalue_t llvm_bitcast(Type *type, llvalue_t ptr) {
 }
 
 llvalue_t llvm_getelementptr_i32(llvalue_t ptr, llvalue_t index) {
-    // TODO - IMPORTANT: Uncomment
-    //assert(ptr.kind == LLVALUE::REG);
+    assert(ptr.kind == LLVALUE::REG);
     llvalue_t v;
     v.reg = gen_reg();
     v.kind = LLVALUE::REG;
@@ -206,8 +205,7 @@ llvalue_t llvm_getelementptr_i8(llvalue_t ptr, size_t offset) {
 }
 
 llvalue_t llvm_load(Type *type, llvalue_t ptr) {
-    // TODO - IMPORTANT: Uncomment
-    //assert(ptr.kind == LLVALUE::REG);
+    assert(ptr.kind == LLVALUE::REG);
     llvalue_t v;
     v.reg = gen_reg();
     v.kind = LLVALUE::REG;

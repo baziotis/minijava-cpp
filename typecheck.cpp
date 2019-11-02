@@ -971,7 +971,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         // Note: Read carefully the following code, it's crafted subtly.
 
         bool do_branching = true;
-        if (res.kind == LLVALUE::CONST && res.val == 0) {
+        if (res.kind == LLVALUE::CONST) {
             // Constant left `false` value, don't run (i.e. codegen) the right expression.
             // `res` remains and is the result of the left expr.
             // We still have to type-check the right expr.
@@ -1002,8 +1002,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             and_lbls.construct("and");
             
             // To reach this point, certainly res1.kind == LLVALUE::REG.
-            // TODO - IMPORTANT: Uncomment
-            //assert(res.kind == LLVALUE::REG);
+            assert(res.kind == LLVALUE::REG);
             llvm_branch_cond(res, and_lbls.start, and_lbls.end);
             llvm_gen_lbl(and_lbls.start);
         }
@@ -1136,8 +1135,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
 
 
         // You can't have a constant of pointer value.
-        // TODO: Uncomment
-        //assert(ptr.kind == LLVALUE::REG);
+        assert(ptr.kind == LLVALUE::REG);
         llvalue_t el;
         if (index.kind == LLVALUE::CONST) {
             // If index is constant and negative, we check it above.
@@ -1200,6 +1198,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         if (!ret_type) {
             return this->type_table.undefined_type;
         }
+        __expr_context.llval.kind = LLVALUE::REG;
         return ret_type;
     } break;
     default: assert(0); return this->type_table.undefined_type;
