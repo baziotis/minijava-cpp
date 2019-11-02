@@ -20,7 +20,7 @@ void set_reg(ssize_t v) {
     reg = v - 1;
 }
 
-static long gen_reg() {
+long gen_reg() {
     ++reg;
     return reg;
 }
@@ -41,34 +41,6 @@ void emit(const char *fmt, ...) {
         vprintf(fmt, args);
         va_end(args);
     }
-}
-
-llvalue_t llvm_alloca(Type *type) {
-    llvalue_t v;
-    v.kind = LLVALUE::REG;
-    v.reg = gen_reg();
-    IdType *idtype = type->is_IdType();
-    switch (idtype->kind) {
-    case TY::BOOL:
-    {
-        emit("%%%ld = alloca i1, align 1", v.reg);
-    } break;
-    case TY::INT:
-    {
-        emit("%%%ld = alloca i32, align 4", v.reg);
-    } break;
-    case TY::ARR:
-    {
-        emit("%%%ld = alloca i32*, align 8", v.reg);
-    } break;
-    case TY::ID:
-    {
-        emit("%%%ld = alloca %%class.%s, align 8", v.reg, idtype->id);
-    } break;
-    default: assert(0);
-    }
-
-    return v;
 }
 
 llvalue_t llvm_op_const(int op, int val1, int val2) {
@@ -100,7 +72,7 @@ static void print_const_llvalue(llvalue_t v, bool its_bool) {
     }
 }
 
-static void llvm_print_llvalue(llvalue_t v, bool its_bool = false) {
+void print_llvalue(llvalue_t v, bool its_bool /* = false */) {
     if (v.kind == LLVALUE::CONST) {
         print_const_llvalue(v, its_bool);
     } else {
@@ -135,14 +107,14 @@ llvalue_t llvm_op(int op, llvalue_t res1, llvalue_t res2) {
     case '&': emit("and i1 "); break;
     default: assert(0);
     }
-    llvm_print_llvalue(res1);
+    print_llvalue(res1);
     emit(", ");
-    llvm_print_llvalue(res2);
+    print_llvalue(res2);
     emit("\n");
     return v;
 }
 
-static void print_lltype(Type *type) {
+void print_lltype(Type *type) {
     switch (type->kind) {
     case TY::BOOL: emit("i1"); break;
     case TY::INT: emit("i32"); break;
@@ -157,17 +129,20 @@ static void print_lltype(Type *type) {
     }
 }
 
-llvalue_t get_virtual_method(Method *method) {
-    long i8pp = gen_reg();
+llvalue_t get_virtual_method(Type *base_obj_ty, llvalue_t base_obj, Method *method) {
+    assert(base_obj.kind == LLVALUE::REG);
+    long i8ppp = gen_reg();
     print_codegen_indentation();
-    // Bitcast the `this` (register 0) to i8***.
+    // Bitcast the object pointer to i8***.
     // Note that the vptr is a i8**. So, with this bitcast,
     // and just loading a i8**, we get the vptr.
-    emit("%%%ld = bitcast i8* %%0 to i8***\n", i8pp);
+    emit("%%%ld = bitcast ", i8ppp);
+    print_lltype(base_obj_ty);
+    emit(" %%%ld to i8***\n", base_obj.reg);
     long vptr = gen_reg();
     print_codegen_indentation();
     // Get the vptr
-    emit("%%%ld = load i8**, i8*** %%%ld, align 8\n", vptr, i8pp);
+    emit("%%%ld = load i8**, i8*** %%%ld, align 8\n", vptr, i8ppp);
     // Go to the correct offset in the virtual table.
     long gep = vptr;
     size_t offset = method->offset;
@@ -198,18 +173,7 @@ llvalue_t get_virtual_method(Method *method) {
     return vmethod;
 }
 
-llvalue_t llvm_bitcast_id_ptr(IdType *type, llvalue_t ptr) {
-    assert(ptr.kind == LLVALUE::REG);
-    // Assume that `ptr` has type i8*
-    llvalue_t v;
-    v.reg = gen_reg();
-    v.kind = LLVALUE::REG;
-    print_codegen_indentation();
-    emit("%%%ld = bitcast i8* %%%ld to %%class.%s**\n", v.reg, ptr.reg, type->id);
-    return v;
-}
-
-llvalue_t llvm_bitcast(Type *type, llvalue_t ptr) {
+llvalue_t llvm_bitcast_from_i8p(Type *type, llvalue_t ptr) {
     llvalue_t v;
     assert(ptr.kind == LLVALUE::REG);
     v.reg = gen_reg();
@@ -229,11 +193,12 @@ llvalue_t llvm_bitcast(Type *type, llvalue_t ptr) {
     {
         emit("%%%ld = bitcast i8* %%%ld to i32**\n", v.reg, ptr.reg);
     } break;
-    // Note: There's no `case TY::ID`. This should be handled by load_bitcast_id_ptr().
-    // We could stuff it in here, but it would make this function have a corner case.
-    // This load works by passing it the type we want to _load_. But we have no way
-    // to represent a type like: pointer to pointer to X. Which is what we need
-    // for an object. We load a pointer to an object.
+    case TY::ID:
+    {
+        IdType *idtype = (IdType*) type;
+        assert(idtype->is_IdType());
+        emit("%%%ld = bitcast i8* %%%ld to %%class.%s**\n", v.reg, ptr.reg, idtype->id);
+    } break;
     default: assert(0);
     }
     return v;
@@ -246,7 +211,7 @@ llvalue_t llvm_getelementptr_i32(llvalue_t ptr, llvalue_t index) {
     v.kind = LLVALUE::REG;
     print_codegen_indentation();
     emit("%%%ld = getelementptr inbounds i32, i32* %%%ld, i32 ", v.reg, ptr.reg);
-    llvm_print_llvalue(index);
+    print_llvalue(index);
     emit("\n");
     return v;
 }
@@ -269,7 +234,7 @@ llvalue_t llvm_load(Type *type, llvalue_t ptr) {
     switch (type->kind) {
     case TY::BOOL:
     {
-        emit("%%%ld = load i1, i1* %%%ld, align 1\n", v.reg, ptr.reg);
+        emit("%%%ld = load i1, i1* %%%ld\n", v.reg, ptr.reg);
     } break;
     case TY::INT:
     {
@@ -279,34 +244,15 @@ llvalue_t llvm_load(Type *type, llvalue_t ptr) {
     {
         emit("%%%ld = load i32*, i32** %%%ld, align 8\n", v.reg, ptr.reg);
     } break;
-    // Note: There's no `case TY::ID`. This should be handled by load_id_ptr().
-    // We could stuff it in here, but it would make this function have a corner case.
-    // This load works by passing it the type we want to _load_. But we have no way
-    // to represent a type like: pointer to pointer to X. Which is what we need
-    // for an object. We load a pointer to an object.
+    case TY::ID:
+    {
+        IdType *idtype = (IdType*) type;
+        assert(idtype->is_IdType());
+        emit("%%%ld = load %%class.%s*, %%class.%s** %%%ld, align 8\n", v.reg,
+             idtype->id, idtype->id, ptr.reg);
+    } break;
     default: assert(0);
     }
-    return v;
-}
-
-// Note: I think llvm_load_*() could be one function, where we give
-// it a type and loads according to it. The problem is that we don't
-// have a way to represent arbitrary pointer types. And we need those
-// for pointers to IdTypes. For example, when we do:
-//    A a;
-//    a = new A();
-// this generates an alloca, i.e.:
-//    %1 = alloca %class.A*, align 8
-// %1 is pointer to pointer to %class.A, and we can't represent that with `Type`.
-llvalue_t llvm_load_id_ptr(IdType *type, llvalue_t ptr) {
-    llvalue_t v;
-    assert(ptr.kind == LLVALUE::REG);
-    v.reg = gen_reg();
-    v.kind = LLVALUE::REG;
-    print_codegen_indentation();
-    // Load a pointer to IdType given, from a pointer to pointer to this type.
-    emit("%%%ld = load %%class.%s*, %%class.%s** %%%ld, align 8\n", v.reg,
-         type->id, type->id, ptr.reg);
     return v;
 }
 
@@ -353,7 +299,7 @@ void llvm_gen_lbl(llvm_label_t l) {
 void llvm_branch_cond(llvalue_t cond, llvm_label_t l1, llvm_label_t l2) {
     print_codegen_indentation();
     emit("br i1 ");
-    llvm_print_llvalue(cond);
+    print_llvalue(cond);
     emit(", label %s, label %s\n\n", l1.lbl, l2.lbl);
 }
 
@@ -370,7 +316,7 @@ llvalue_t llvm_and_phi(llvm_label_t l1, llvalue_t v1, llvm_label_t l2) {
     assert(v1.kind == LLVALUE::REG || (v1.val == 0 || v1.val == 1));
     print_codegen_indentation();
     emit("%%%ld = phi i1 [ false, %s ], [ ", v.reg, l1.lbl);
-    llvm_print_llvalue(v1);
+    print_llvalue(v1);
     emit(", %s]\n", l2.lbl);
     return v;
 }
@@ -393,11 +339,54 @@ llvalue_t llvm_call(Type *ret_type, llvalue_t vmethod, FuncArr<Type*> types, Fun
     for (size_t i = 0; i != types.len; ++i) {
         print_lltype(types[i]);
         emit(" ");  // space
-        llvm_print_llvalue(values[i]);
+        print_llvalue(values[i]);
         if (i != types.len - 1) {
             emit(", ");
         }
     }
     emit(")");
     return v;
+}
+
+llvalue_t llvm_alloca(Type *type) {
+    llvalue_t v;
+    v.reg = gen_reg();
+    v.kind = LLVALUE::REG;
+    print_codegen_indentation();
+    switch (type->kind) {
+    case TY::BOOL:
+    {
+        emit("%%%ld = alloca i1\n", v.reg);
+    } break;
+    case TY::INT:
+    {
+        emit("%%%ld = alloca i32, align 4\n", v.reg);
+    } break;
+    case TY::ARR:
+    {
+        emit("%%%ld = alloca i32*, align 8\n", v.reg);
+    } break;
+    case TY::ID:
+    {
+        IdType *idtype = (IdType*) type;
+        assert(idtype->is_IdType());
+        emit("%%%ld = alloca %%class.%s*, align 8\n", v.reg, idtype->id);
+    } break;
+    default: assert(0);
+    }
+    return v;
+}
+
+void llvm_store(Type *type, llvalue_t value, llvalue_t ptr) {
+    assert(ptr.kind == LLVALUE::REG);
+    print_codegen_indentation();
+    emit("store ");
+    print_lltype(type);
+    emit(" ");
+    print_llvalue(value);
+    emit(", ");
+    print_lltype(type);
+    emit("* ");
+    print_llvalue(ptr);
+    emit("\n");
 }

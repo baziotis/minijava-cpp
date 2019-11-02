@@ -172,7 +172,7 @@ void TypeTable::compute_and_print_offsets_for_type(IdType *type) {
     } else {
         // The first parent in the inheritance tree - create
         // a vptr.
-        emit("%%class.%s = type { i8 (...)*", type->id);
+        emit("%%class.%s = type { i8 (...)**", type->id);
     }
 
     // Process methods first to know how many methods we have so we
@@ -504,8 +504,6 @@ Method *DeclarationVisitor::visit(MethodDeclaration *method_decl) {
                             " in method `", method_decl->id, "`");
             param->id = gen_id();
         }
-        // All params are considered initialized.
-        param->initialized = true;
         method->locals.insert(param->id, param);
     }
     for (LocalDeclaration *var : method_decl->vars) {
@@ -590,18 +588,32 @@ void MainTypeCheckVisitor::visit(Method *method) {
     // We're starting from 1, because register 0
     // is always reserved for the 'this' pointer.
     // Set a register _only_ for the parameters.
-    ssize_t local_reg_counter = 1;
-    ssize_t param_len = method->param_len;
-    // +1 because we started with 1.
-    for (size_t i = 0; i < param_len; ++i) {
-        Local *local = method->locals[i];
+    size_t local_reg_counter = 1;
+    size_t param_len = method->param_len;
+    size_t param_counter;
+    for (param_counter = 0; param_counter < param_len; ++param_counter) {
+        Local *local = method->locals[param_counter];
         local->kind = (int)LOCAL_KIND::PARAM;
-        local->reg = local_reg_counter;
+        local->llval = {LLVALUE::REG, (long)local_reg_counter};
+        // All params are considered initialized.
+        local->initialized = true;
         ++local_reg_counter;
     }
     set_reg(local_reg_counter);
 
     size_t locals_len = method->locals.len;
+    size_t var_counter = param_counter;
+    for (; var_counter < locals_len; ++var_counter) {
+        Local *local = method->locals[var_counter];
+        local->kind = (int)LOCAL_KIND::VAR;
+        llvalue_t allocated_mem = llvm_alloca(local->type);
+        local->llval = allocated_mem;
+        // Locals are initially not initialed. We have allocated
+        // memory for them with `alloca`.
+        local->initialized = false;
+    }
+    // Separate `alloca`s from the rest of the code.
+    //emit("\n");
 
     // TODO: Emit the entry label / basic block for each
     // function
@@ -779,9 +791,8 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         case LOCAL_KIND::PARAM:
         case LOCAL_KIND::VAR:
         {
-            // Just use its automatically assigned register.
-            __expr_context.llval.kind = LLVALUE::REG;
-            __expr_context.llval.reg = local->reg;
+            // Just use its llvalue.
+            __expr_context.llval = local->llval;
         } break;
         case LOCAL_KIND::FIELD:
         {
@@ -795,14 +806,15 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             llvalue_t value;
             IdType *idtype = local->type->is_IdType();
             if (idtype) {
-                typed_ptr = llvm_bitcast_id_ptr(idtype, ptr);
-                value = llvm_load_id_ptr(idtype, typed_ptr);
+                typed_ptr = llvm_bitcast_from_i8p(idtype, ptr);
+                value = llvm_load(idtype, typed_ptr);
             } else {
-                typed_ptr = llvm_bitcast(local->type, ptr);
+                typed_ptr = llvm_bitcast_from_i8p(local->type, ptr);
                 value = llvm_load(local->type, typed_ptr);
             }
             __expr_context.llval = value;
         } break;
+        default: printf("id: %s\n", local->id); assert(0);
         }
         /// End of Codegen ///
         return local->type;
@@ -1158,7 +1170,9 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         debug_print("MainTypeCheck::MessageSendExpression\n");
         assert(be->e1);
         IdType *type = (IdType*) be->e1->accept(this);
+        llvalue_t base_obj = __expr_context.llval;
         assert(type);
+        assert(type->is_IdType());
 
         if (type->kind == TY::UNDEFINED) {
             typecheck_error(expr->loc, "In message send expression, Identifier: `",
@@ -1188,8 +1202,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         }
         Type *ret_type = method->ret_type;
         // Load the virtual method pointer.
-        llvalue_t vmethod = get_virtual_method(method);
-
+        llvalue_t vmethod = get_virtual_method(type, base_obj, method);
         __expr_context.llval = llvm_call(ret_type, vmethod, expr_list_types, args);
         return ret_type;
     } break;
@@ -1213,10 +1226,12 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
     assert(this->curr_method);
     assert(this->curr_class);
     Local *lhs = lookup_local(asgn_stmt->id, this->curr_method, this->curr_class);
+    bool is_correct = true;
     if (!lhs) {
         // Of course, with variable we mean also parameter and field.
         typecheck_error(asgn_stmt->loc, "In assignment statement, variable: `",
                         asgn_stmt->id, "` is not defined");
+        is_correct = false;
     }
     assert(asgn_stmt->rhs);
     Type *rhs_type = asgn_stmt->rhs->accept(this);
@@ -1224,6 +1239,35 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
         typecheck_error(asgn_stmt->loc, "Incompatible types: `",
                         rhs_type->name(), "` can't be converted to `",
                         lhs->type->name(), "`");
+    }
+    if (!is_correct) {
+        return;
+    }
+    /// Codegen ///
+    llvalue_t value = __expr_context.llval;
+    // Bitcast the value to the type of the lhs
+    if (lhs->type != rhs_type) {
+        long reg = gen_reg();
+        emit("%%%ld = bitcast ");
+        print_lltype(rhs_type);
+        print_llvalue(rhs_type);
+        emit(" to ");
+        print_lltype(lhs->type);
+        emit("\n");
+        value.kind = LLVALUE::REG;
+        value.reg = reg;
+    }
+
+    if (!lhs->initialized && value.kind != LLVALUE::CONST) {
+        // Assume that if it's not initialized,
+        // the current assigned `llval` is a pointer.
+        // The pointer we got from `alloca`.
+        llvalue_t ptr = lhs->llval;
+        llvm_store(lhs->type, value, ptr);
+        llvalue_t loaded = llvm_load(lhs->type, ptr);
+        lhs->llval = loaded;
+    } else {
+        lhs->llval = value;
     }
     lhs->initialized = true;
 }

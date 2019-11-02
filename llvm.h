@@ -3,43 +3,6 @@
 
 long gen_lbl();
 
-enum class LLVALUE {
-    UNDEFINED,
-    CONST,
-    REG,
-};
-
-struct llvalue_t {
-    LLVALUE kind;
-    union {
-        long reg;
-        int val;
-    };
-
-    llvalue_t() { }
-
-
-    llvalue_t(bool _val) {
-        kind = LLVALUE::CONST;
-        val = (int) _val;
-    }
-
-    // TODO - IMPORTANT: This is a very bad design because the user
-    // has to specifically cast to `int` or `long`
-    // to disambiguate.
-
-    llvalue_t(LLVALUE _kind, int _val) {
-        assert(_kind == LLVALUE::CONST);
-        kind = _kind;
-        val = _val;
-    }
-    llvalue_t(LLVALUE _kind, long _reg) {
-        assert(_kind == LLVALUE::REG);
-        kind = _kind;
-        reg = _reg;
-    }
-};
-
 struct llvm_label_t {
     const char *lbl;
     bool generated;
@@ -95,16 +58,18 @@ struct ExprContext {
     llvalue_t llval;
 };
 
+
+void print_llvalue(llvalue_t v, bool its_bool = false);
+void print_lltype(Type *type);
+long gen_reg();
 void set_reg(ssize_t v);
 void emit(const char *fmt, ...);
 llvalue_t llvm_op_const(int op, int val1, int val2);
 llvalue_t llvm_op(int op, llvalue_t res1, llvalue_t res2);
-llvalue_t llvm_bitcast_id_ptr(IdType *type, llvalue_t ptr);
-llvalue_t llvm_bitcast(Type *type, llvalue_t ptr);
-llvalue_t get_virtual_method(Method *method);
+llvalue_t llvm_bitcast_from_i8p(Type *type, llvalue_t ptr);
+llvalue_t get_virtual_method(Type *base_obj_ty, llvalue_t base_obj, Method *method);
 llvalue_t llvm_getelementptr_i32(llvalue_t ptr, llvalue_t index);
 llvalue_t llvm_getelementptr_i8(llvalue_t ptr, size_t offset);
-llvalue_t llvm_load_id_ptr(IdType *type, llvalue_t ptr);
 llvalue_t llvm_load(Type *type, llvalue_t ptr);
 llvalue_t not_llvalue(llvalue_t v);
 llvalue_t llvm_calloc(Type *type, llvalue_t sz);
@@ -113,3 +78,5 @@ void llvm_branch_cond(llvalue_t cond, llvm_label_t l1, llvm_label_t l2);
 void llvm_branch(llvm_label_t l);
 llvalue_t llvm_and_phi(llvm_label_t l1, llvalue_t v1, llvm_label_t l2);
 llvalue_t llvm_call(Type *ret_type, llvalue_t vmethod, FuncArr<Type*> types, FuncArr<llvalue_t> values);
+llvalue_t llvm_alloca(Type *type);
+void llvm_store(Type *type, llvalue_t value, llvalue_t ptr);

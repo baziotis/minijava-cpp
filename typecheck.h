@@ -194,6 +194,43 @@ struct Type : public TypeCheckCustomAllocation {
     };
 };
 
+enum class LLVALUE {
+    UNDEFINED,
+    CONST,
+    REG,
+};
+
+struct llvalue_t {
+    LLVALUE kind;
+    union {
+        long reg;
+        int val;
+    };
+
+    llvalue_t() { }
+
+
+    llvalue_t(bool _val) {
+        kind = LLVALUE::CONST;
+        val = (int) _val;
+    }
+
+    // TODO - IMPORTANT: This is a very bad design because the user
+    // has to specifically cast to `int` or `long`
+    // to disambiguate.
+
+    llvalue_t(LLVALUE _kind, int _val) {
+        assert(_kind == LLVALUE::CONST);
+        kind = _kind;
+        val = _val;
+    }
+    llvalue_t(LLVALUE _kind, long _reg) {
+        assert(_kind == LLVALUE::REG);
+        kind = _kind;
+        reg = _reg;
+    }
+};
+
 enum class LOCAL_KIND {
   UNDEFINED,
   PARAM,
@@ -207,8 +244,15 @@ struct Local  : public TypeCheckCustomAllocation {
     const char *id;
     Type *type;
     union {
-        // Register for params and variables.
-        long reg;
+        // TODO:
+        // In practice, this wastes bytes. That is, we only need
+        // either the `reg` or the `val` from an llvalue and know
+        // either if it is const or not. Note that the latter is
+        // 1 bit of info, but we're getting from `kind`. And because
+        // it is an `enum`, it will take 8 bytes. We assume that
+        // the locals won't be very much, so for now, we can
+        // live with it.
+        llvalue_t llval;
         // Offset for fields.
         size_t offset;
     };
@@ -216,8 +260,6 @@ struct Local  : public TypeCheckCustomAllocation {
     // stupid warning.
     int kind : 3;
     bool initialized : 1;
-    // For vars only
-    bool loaded;
 
     Local() : id(NULL), initialized(false) { }
     Local(const char *_id, Type *_type) : id(_id), type(_type), initialized(false) { }
