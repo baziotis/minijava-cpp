@@ -413,6 +413,7 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
             field = ld->accept(this);
             // All fields are considered initialized.
             field->initialized = true;
+            field->kind = (int)LOCAL_KIND::FIELD;
             type->fields.insert(field->id, field);
             /// Codegen ///
             
@@ -589,17 +590,18 @@ void MainTypeCheckVisitor::visit(Method *method) {
     // We're starting from 1, because register 0
     // is always reserved for the 'this' pointer.
     // Set a register _only_ for the parameters.
-    ssize_t param_counter = 1;
+    ssize_t local_reg_counter = 1;
     ssize_t param_len = method->param_len;
-    for (Local *local : method->locals) {
-        if (!param_len) {
-            break;
-        }
-        local->reg = param_counter;
-        ++param_counter;
-        --param_len;
+    // +1 because we started with 1.
+    for (size_t i = 0; i < param_len; ++i) {
+        Local *local = method->locals[i];
+        local->kind = (int)LOCAL_KIND::PARAM;
+        local->reg = local_reg_counter;
+        ++local_reg_counter;
     }
-    set_reg(param_counter);
+    set_reg(local_reg_counter);
+
+    size_t locals_len = method->locals.len;
 
     // TODO: Emit the entry label / basic block for each
     // function
@@ -630,6 +632,9 @@ void MainTypeCheckVisitor::visit(Method *method) {
         }
     }
     this->curr_method = NULL;
+
+    // TODO: Remove that. Added for now to separate IR between functions.
+    emit("\n");
 
     // Free arena for objects of function lifetime
     deallocate(MEM::FUNC);
@@ -747,22 +752,6 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         assert(this->curr_class);
         Local *local = lookup_local(expr->id, this->curr_method, this->curr_class);
 
-        /// Codegen ///
-
-        // TODO: If the id is not a parameter, it will not have a register assigned.
-        // For fields:
-        // Add the functionality to check if it has one
-        // and if not, load the value into a register from the `this` pointer
-        // (register %0). This should be done according to where the id exists
-        // in the class (or the parent class etc.)
-        // For locals:
-        // This should all have an alloca. Load their value into a register
-        // and assign them a register.
-        __expr_context.llval.kind = LLVALUE::REG;
-        __expr_context.llval.reg = local->reg;
-
-        /// End of Codegen ///
-
         if (!local) {
             typecheck_error(expr->loc, "In identifier expression, Identifier: `",
                             expr->id, "` does is not defined.");
@@ -773,6 +762,56 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             typecheck_error(expr->loc, "Variable: `",
                             expr->id, "` might have not been initialized.");
         }
+
+        /// Codegen ///
+
+        // We assume that we have correct type-checking (although we might not).
+        // Given that, the 3 categories are handled as follows:
+        // Params:
+        //    Params have an automatically-assigned register and we just we use that.
+        // Fields:
+        //    For fields, we just load from register %0, which we assume corresponds
+        //    to the `this` implicit parameter. Normally, we should use `getelementr`
+        //    (correctly) but this is kind of complicated, because the
+        //    id can be in an arbitrary depth in the inheritance tree.
+        //    What is more, the current offsets would
+        //    not work (because they're absolute offsets, like the pointer is char*,
+        //    not like getelementptr's). So, we assume %0 is i8*, move to the right position
+        //    with `getelementptr` and we just bitcast it.
+        // Vars:
+        //    For vars, if the type-checking is correct, the will have been initialized.
+        //    And thus, they should have a register assigned to them.
+        LOCAL_KIND kind = (LOCAL_KIND)local->kind;
+        switch (kind) {
+        case LOCAL_KIND::PARAM:
+        case LOCAL_KIND::VAR:
+        {
+            // Just use its automatically assigned register.
+            __expr_context.llval.kind = LLVALUE::REG;
+            __expr_context.llval.reg = local->reg;
+        } break;
+        case LOCAL_KIND::FIELD:
+        {
+            llvalue_t reg0 = {LLVALUE::REG, (long)0};
+            llvalue_t ptr = reg0;
+            if (local->offset) {
+                // Move to the right offset
+                ptr = llvm_getelementptr_i8(reg0, local->offset);
+            }
+            llvalue_t typed_ptr;
+            llvalue_t value;
+            IdType *idtype = local->type->is_IdType();
+            if (idtype) {
+                typed_ptr = llvm_bitcast_id_ptr(idtype, ptr);
+                value = llvm_load_id_ptr(idtype, typed_ptr);
+            } else {
+                typed_ptr = llvm_bitcast(local->type, ptr);
+                value = llvm_load(local->type, typed_ptr);
+            }
+            __expr_context.llval = value;
+        } break;
+        }
+        /// End of Codegen ///
         return local->type;
     } break;
     case EXPR::INT_LIT:
@@ -844,7 +883,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             __expr_context.llval = llvm_calloc(int_arr_type, {LLVALUE::CONST,
                                                    (int)(len.val * sizeof_int)});
         } else {
-            llvalue_t size = llvm_op('*', len, {LLVALUE::CONST, 4});
+            llvalue_t size = llvm_op('*', len, {LLVALUE::CONST, (int)4});
             __expr_context.llval = llvm_calloc(int_arr_type, size);
         }
         /// End of Codegen ///
@@ -865,7 +904,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         assert(ptr.kind == LLVALUE::REG);
         // Just loading a 4-byte value from `the` ptr will give us the length
         // as the first 4 bytes of arrays are the length.
-        __expr_context.llval = llvm_load(ptr);
+        __expr_context.llval = llvm_load(this->type_table.int_type, ptr);
 
         /// End of Codegen ///
 
@@ -963,8 +1002,8 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             and_lbls.construct("and");
             
             // To reach this point, certainly res1.kind == LLVALUE::REG.
-            // TODO: Uncomment
-            //assert(res1.kind == LLVALUE::REG);
+            // TODO - IMPORTANT: Uncomment
+            //assert(res.kind == LLVALUE::REG);
             llvm_branch_cond(res, and_lbls.start, and_lbls.end);
             llvm_gen_lbl(and_lbls.start);
         }
@@ -1085,7 +1124,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         // value is used inline).
         lbl_pair_t lbls_len_check;
         lbls_len_check.construct("bounds_len");
-        llvalue_t len = llvm_load(ptr);
+        llvalue_t len = llvm_load(this->type_table.int_type, ptr);
         llvalue_t cmp_res = llvm_op('<', index, len);
         // Mind the order of labels
         llvm_branch_cond(cmp_res, lbls_len_check.end, lbls_len_check.start);
@@ -1114,10 +1153,10 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             // TODO: Do something better
             emit("    EXIT\n\n");
             llvm_gen_lbl(lbls_neg_check.end);
-            index = llvm_op('+', index, {LLVALUE::CONST, 4});
+            index = llvm_op('+', index, {LLVALUE::CONST, (int)4});
         }
-        ptr = llvm_getelementptr(ptr, index);
-        __expr_context.llval = llvm_load(ptr);
+        ptr = llvm_getelementptr_i32(ptr, index);
+        __expr_context.llval = llvm_load(this->type_table.int_type, ptr);
 
         /// End of Codegen ///
 

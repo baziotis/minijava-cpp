@@ -43,6 +43,34 @@ void emit(const char *fmt, ...) {
     }
 }
 
+llvalue_t llvm_alloca(Type *type) {
+    llvalue_t v;
+    v.kind = LLVALUE::REG;
+    v.reg = gen_reg();
+    IdType *idtype = type->is_IdType();
+    switch (idtype->kind) {
+    case TY::BOOL:
+    {
+        emit("%%%ld = alloca i1, align 1", v.reg);
+    } break;
+    case TY::INT:
+    {
+        emit("%%%ld = alloca i32, align 4", v.reg);
+    } break;
+    case TY::ARR:
+    {
+        emit("%%%ld = alloca i32*, align 8", v.reg);
+    } break;
+    case TY::ID:
+    {
+        emit("%%%ld = alloca %%class.%s, align 8", v.reg, idtype->id);
+    } break;
+    default: assert(0);
+    }
+
+    return v;
+}
+
 llvalue_t llvm_op_const(int op, int val1, int val2) {
     llvalue_t v;
     v.kind = LLVALUE::CONST;
@@ -114,8 +142,49 @@ llvalue_t llvm_op(int op, llvalue_t res1, llvalue_t res2) {
     return v;
 }
 
-llvalue_t llvm_getelementptr(llvalue_t ptr, llvalue_t index) {
-    // TODO: Uncomment
+llvalue_t llvm_bitcast_id_ptr(IdType *type, llvalue_t ptr) {
+    assert(ptr.kind == LLVALUE::REG);
+    // Assume that `ptr` has type i8*
+    llvalue_t v;
+    v.reg = gen_reg();
+    v.kind = LLVALUE::REG;
+    print_codegen_indentation();
+    emit("%%%ld = bitcast i8* %%%ld to %%class.%s**\n", v.reg, ptr.reg, type->id);
+    return v;
+}
+
+llvalue_t llvm_bitcast(Type *type, llvalue_t ptr) {
+    llvalue_t v;
+    assert(ptr.kind == LLVALUE::REG);
+    v.reg = gen_reg();
+    v.kind = LLVALUE::REG;
+    print_codegen_indentation();
+    // Assume that `ptr` has type i8*
+    switch (type->kind) {
+    case TY::BOOL:
+    {
+        emit("%%%ld = bitcast i8* %%%ld to i1*\n", v.reg, ptr.reg);
+    } break;
+    case TY::INT:
+    {
+        emit("%%%ld = bitcast i8* %%%ld to i32*\n", v.reg, ptr.reg);
+    } break;
+    case TY::ARR:
+    {
+        emit("%%%ld = bitcast i8* %%%ld to i32**\n", v.reg, ptr.reg);
+    } break;
+    // Note: There's no `case TY::ID`. This should be handled by load_bitcast_id_ptr().
+    // We could stuff it in here, but it would make this function have a corner case.
+    // This load works by passing it the type we want to _load_. But we have no way
+    // to represent a type like: pointer to pointer to X. Which is what we need
+    // for an object. We load a pointer to an object.
+    default: assert(0);
+    }
+    return v;
+}
+
+llvalue_t llvm_getelementptr_i32(llvalue_t ptr, llvalue_t index) {
+    // TODO - IMPORTANT: Uncomment
     //assert(ptr.kind == LLVALUE::REG);
     llvalue_t v;
     v.reg = gen_reg();
@@ -127,12 +196,63 @@ llvalue_t llvm_getelementptr(llvalue_t ptr, llvalue_t index) {
     return v;
 }
 
-llvalue_t llvm_load(llvalue_t ptr) {
+llvalue_t llvm_getelementptr_i8(llvalue_t ptr, size_t offset) {
     llvalue_t v;
     v.reg = gen_reg();
     v.kind = LLVALUE::REG;
     print_codegen_indentation();
-    emit("%%%ld = load i32, i32* %%%ld, align 4\n", v.reg, ptr.reg);
+    emit("%%%ld = getelementptr inbounds i8, i8* %%%ld, i32 %zd\n", v.reg, ptr.reg, offset);
+    return v;
+}
+
+llvalue_t llvm_load(Type *type, llvalue_t ptr) {
+    // TODO - IMPORTANT: Uncomment
+    //assert(ptr.kind == LLVALUE::REG);
+    llvalue_t v;
+    v.reg = gen_reg();
+    v.kind = LLVALUE::REG;
+    print_codegen_indentation();
+    switch (type->kind) {
+    case TY::BOOL:
+    {
+        emit("%%%ld = load i1, i1* %%%ld, align 1\n", v.reg, ptr.reg);
+    } break;
+    case TY::INT:
+    {
+        emit("%%%ld = load i32, i32* %%%ld, align 4\n", v.reg, ptr.reg);
+    } break;
+    case TY::ARR:
+    {
+        emit("%%%ld = load i32*, i32** %%%ld, align 8\n", v.reg, ptr.reg);
+    } break;
+    // Note: There's no `case TY::ID`. This should be handled by load_id_ptr().
+    // We could stuff it in here, but it would make this function have a corner case.
+    // This load works by passing it the type we want to _load_. But we have no way
+    // to represent a type like: pointer to pointer to X. Which is what we need
+    // for an object. We load a pointer to an object.
+    default: assert(0);
+    }
+    return v;
+}
+
+// Note: I think llvm_load_*() could be one function, where we give
+// it a type and loads according to it. The problem is that we don't
+// have a way to represent arbitrary pointer types. And we need those
+// for pointers to IdTypes. For example, when we do:
+//    A a;
+//    a = new A();
+// this generates an alloca, i.e.:
+//    %1 = alloca %class.A*, align 8
+// %1 is pointer to pointer to %class.A, and we can't represent that with `Type`.
+llvalue_t llvm_load_id_ptr(IdType *type, llvalue_t ptr) {
+    llvalue_t v;
+    assert(ptr.kind == LLVALUE::REG);
+    v.reg = gen_reg();
+    v.kind = LLVALUE::REG;
+    print_codegen_indentation();
+    // Load a pointer to IdType given, from a pointer to pointer to this type.
+    emit("%%%ld = load %%class.%s*, %%class.%s** %%%ld, align 8\n", v.reg,
+         type->id, type->id, ptr.reg);
     return v;
 }
 
@@ -193,8 +313,7 @@ llvalue_t llvm_and_phi(llvm_label_t l1, llvalue_t v1, llvm_label_t l2) {
     v.kind = LLVALUE::REG;
     v.reg = gen_reg();
     // We only need boolean values
-    // TODO: Uncomment
-    //assert(v1.kind == LLVALUE::REG || (v1.val == 0 || v1.val == 1));
+    assert(v1.kind == LLVALUE::REG || (v1.val == 0 || v1.val == 1));
     print_codegen_indentation();
     emit("%%%ld = phi i1 [ false, %s ], [ ", v.reg, l1.lbl);
     print_llvalue(v1);

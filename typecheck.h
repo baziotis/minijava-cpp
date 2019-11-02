@@ -194,6 +194,13 @@ struct Type : public TypeCheckCustomAllocation {
     };
 };
 
+enum class LOCAL_KIND {
+  UNDEFINED,
+  PARAM,
+  FIELD,
+  VAR
+};
+
 // TODO: Check if `id` fields are actually ever used for Locals
 // and Methods
 struct Local  : public TypeCheckCustomAllocation {
@@ -205,7 +212,12 @@ struct Local  : public TypeCheckCustomAllocation {
         // Offset for fields.
         size_t offset;
     };
-    bool initialized;
+    // We have to use an `int` instead of LOCAL_KIND to suppress
+    // stupid warning.
+    int kind : 3;
+    bool initialized : 1;
+    // For vars only
+    bool loaded;
 
     Local() : id(NULL), initialized(false) { }
     Local(const char *_id, Type *_type) : id(_id), type(_type), initialized(false) { }

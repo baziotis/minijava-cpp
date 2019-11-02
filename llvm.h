@@ -24,6 +24,10 @@ struct llvalue_t {
         val = (int) _val;
     }
 
+    // TODO - IMPORTANT: This is a very bad design because the user
+    // has to specifically cast to `int` or `long`
+    // to disambiguate.
+
     llvalue_t(LLVALUE _kind, int _val) {
         assert(_kind == LLVALUE::CONST);
         kind = _kind;
@@ -98,8 +102,12 @@ void print_const_llvalue(llvalue_t v, bool its_bool);
 void print_llvalue(llvalue_t v, bool its_bool);
 void print_codegen_indentation();
 llvalue_t llvm_op(int op, llvalue_t res1, llvalue_t res2);
-llvalue_t llvm_getelementptr(llvalue_t ptr, llvalue_t index);
-llvalue_t llvm_load(llvalue_t ptr);
+llvalue_t llvm_bitcast_id_ptr(IdType *type, llvalue_t ptr);
+llvalue_t llvm_bitcast(Type *type, llvalue_t ptr);
+llvalue_t llvm_getelementptr_i32(llvalue_t ptr, llvalue_t index);
+llvalue_t llvm_getelementptr_i8(llvalue_t ptr, size_t offset);
+llvalue_t llvm_load_id_ptr(IdType *type, llvalue_t ptr);
+llvalue_t llvm_load(Type *type, llvalue_t ptr);
 llvalue_t not_llvalue(llvalue_t v);
 llvalue_t llvm_calloc(Type *type, llvalue_t sz);
 void llvm_gen_lbl(llvm_label_t l);

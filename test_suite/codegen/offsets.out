@@ -2,3 +2,7 @@
 %class.B = type { %class.A, %class.C*, i32 }
 %class.C = type { i8 (...)* }
 
+
+
+
+
