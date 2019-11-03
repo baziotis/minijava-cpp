@@ -77,6 +77,8 @@ void llvm_gen_lbl(llvm_label_t l);
 void llvm_branch_cond(llvalue_t cond, llvm_label_t l1, llvm_label_t l2);
 void llvm_branch(llvm_label_t l);
 llvalue_t llvm_and_phi(llvm_label_t l1, llvalue_t v1, llvm_label_t l2);
-llvalue_t llvm_call(Type *ret_type, llvalue_t vmethod, FuncArr<Type*> types, FuncArr<llvalue_t> values);
+llvalue_t llvm_call(Type *ret_type, Type *base_obj_ty, llvalue_t base_obj,
+                    llvalue_t vmethod, FuncArr<Type*> types,
+                    FuncArr<llvalue_t> values);
 llvalue_t llvm_alloca(Type *type);
 void llvm_store(Type *type, llvalue_t value, llvalue_t ptr);

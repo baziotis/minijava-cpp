@@ -149,8 +149,11 @@ llvalue_t get_virtual_method(Type *base_obj_ty, llvalue_t base_obj, Method *meth
     if (offset) {
         gep = gen_reg();
         print_codegen_indentation();
+        // offset / 8 because the type is i8**. So, a pointer
+        // and because GEP works like C pointers, +1 in a pointer
+        // is +8 actual.
         emit("%%%ld = getelementptr i8*, i8** %%%ld, %zd\n",
-             gep, vptr, offset);
+             gep, vptr, offset / 8);
     }
     long vmethod_i8 = gen_reg();
     print_codegen_indentation();
@@ -321,7 +324,10 @@ llvalue_t llvm_and_phi(llvm_label_t l1, llvalue_t v1, llvm_label_t l2) {
     return v;
 }
 
-llvalue_t llvm_call(Type *ret_type, llvalue_t vmethod, FuncArr<Type*> types, FuncArr<llvalue_t> values) {
+llvalue_t llvm_call(Type *ret_type, Type *base_obj_ty, llvalue_t base_obj,
+                    llvalue_t vmethod, FuncArr<Type*> types,
+                    FuncArr<llvalue_t> values)
+{
     llvalue_t v;
     v.kind = LLVALUE::REG;
     v.reg = gen_reg();
@@ -333,9 +339,14 @@ llvalue_t llvm_call(Type *ret_type, llvalue_t vmethod, FuncArr<Type*> types, Fun
     assert(vmethod.kind == LLVALUE::REG);
     // Print the register that points to the vmethod
     emit("%%%ld(", vmethod.reg);
-    assert(types.len == values.len);
+    // Pass base object as first implicit param.
+    print_lltype(base_obj_ty);
+    emit(" ");
+    print_llvalue(base_obj);
+    emit(", ");
     // Print the types of args along with the args themselves
     // as a comma-separate list
+    assert(types.len == values.len);
     for (size_t i = 0; i != types.len; ++i) {
         print_lltype(types[i]);
         emit(" ");  // space

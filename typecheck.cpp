@@ -1200,7 +1200,8 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         Type *ret_type = method->ret_type;
         // Load the virtual method pointer.
         llvalue_t vmethod = get_virtual_method(type, base_obj, method);
-        __expr_context.llval = llvm_call(ret_type, vmethod, expr_list_types, args);
+        __expr_context.llval = llvm_call(ret_type, type, base_obj,
+                                         vmethod, expr_list_types, args);
         return ret_type;
     } break;
     default: assert(0); return this->type_table.undefined_type;
