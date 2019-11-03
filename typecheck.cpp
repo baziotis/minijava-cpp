@@ -725,6 +725,17 @@ static Type *typecheck_and_helper(bool is_correct, Expression *expr,
     return undefinedty;
 }
 
+static llvalue_t get_field_ptr(Local *field) {
+    assert(field->kind == (int)LOCAL_KIND::FIELD);
+    llvalue_t reg0 = {LLVALUE::REG, (long)0};
+    llvalue_t ptr = reg0;
+    if (field->offset) {
+        // Move to the right offset
+        ptr = llvm_getelementptr_i8(reg0, field->offset);
+    }
+    return llvm_bitcast_from_i8p(field->type, ptr);
+}
+
 // IMPORTANT: DO NOT check if a type is undefined with equality test with
 // type_table.undefined_type. Check a note above on a full explanation.
 // A lot of types can have remained undefined (either because we never saw a definition
@@ -776,7 +787,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         //    Params have an automatically-assigned register and we just we use that.
         // Fields:
         //    For fields, we just load from register %0, which we assume corresponds
-        //    to the `this` implicit parameter. Normally, we should use `getelementr`
+        //    to the `this` implicit parameter. Normally, we should use `getelementptr`
         //    (correctly) but this is kind of complicated, because the
         //    id can be in an arbitrary depth in the inheritance tree.
         //    What is more, the current offsets would
@@ -796,22 +807,8 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         } break;
         case LOCAL_KIND::FIELD:
         {
-            llvalue_t reg0 = {LLVALUE::REG, (long)0};
-            llvalue_t ptr = reg0;
-            if (local->offset) {
-                // Move to the right offset
-                ptr = llvm_getelementptr_i8(reg0, local->offset);
-            }
-            llvalue_t typed_ptr;
-            llvalue_t value;
-            IdType *idtype = local->type->is_IdType();
-            if (idtype) {
-                typed_ptr = llvm_bitcast_from_i8p(idtype, ptr);
-                value = llvm_load(idtype, typed_ptr);
-            } else {
-                typed_ptr = llvm_bitcast_from_i8p(local->type, ptr);
-                value = llvm_load(local->type, typed_ptr);
-            }
+            llvalue_t ptr = get_field_ptr(local);
+            llvalue_t value = llvm_load(local->type, ptr);
             __expr_context.llval = value;
         } break;
         default: printf("id: %s\n", local->id); assert(0);
@@ -1257,13 +1254,18 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
         value.kind = LLVALUE::REG;
         value.reg = reg;
     }
-
-    if (!lhs->initialized && value.kind != LLVALUE::CONST) {
+    
+    if (lhs->kind == (int)LOCAL_KIND::FIELD) {
+        llvalue_t ptr = get_field_ptr(lhs);
+        llvm_store(lhs->type, value, ptr);
+    } else if (!lhs->initialized && value.kind != LLVALUE::CONST) {
         // Assume that if it's not initialized,
         // the current assigned `llval` is a pointer.
         // The pointer we got from `alloca`.
         llvalue_t ptr = lhs->llval;
         llvm_store(lhs->type, value, ptr);
+        // Load it so we have it in a register.
+        // TODO: Should we postpone this until we have an actual use?
         llvalue_t loaded = llvm_load(lhs->type, ptr);
         lhs->llval = loaded;
     } else {
