@@ -1,4 +1,4 @@
-%class.A = type { i8 (...)* }
+%class.A = type { i8 (...)** }
 
     br i1 %1, label and1, label and_end1
 

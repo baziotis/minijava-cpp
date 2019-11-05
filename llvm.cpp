@@ -383,7 +383,9 @@ llvalue_t llvm_alloca(Type *type) {
         assert(idtype->is_IdType());
         emit("%%%ld = alloca %%class.%s*, align 8\n", v.reg, idtype->id);
     } break;
-    default: assert(0);
+    // We don't actually want to assert here because we might have an undefined
+    // type. The error has been issued elsewhere.
+    //default: //assert(0);
     }
     return v;
 }

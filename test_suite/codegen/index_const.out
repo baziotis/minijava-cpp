@@ -1,4 +1,4 @@
-%class.A = type { i8 (...)* }
+%class.A = type { i8 (...)** }
 
     %2 = load i32, i32* %1, align 4
     %3 = icmp slt i32 0, %2

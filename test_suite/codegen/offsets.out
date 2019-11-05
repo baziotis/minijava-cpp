@@ -1,6 +1,6 @@
-%class.A = type { i8 (...)*, i32, i1, i32 }
+%class.A = type { i8 (...)**, i32, i1, i32 }
 %class.B = type { %class.A, %class.C*, i32 }
-%class.C = type { i8 (...)* }
+%class.C = type { i8 (...)** }
 
 
 

@@ -744,6 +744,10 @@ static llvalue_t get_field_ptr(Local *field) {
 // an undefined type in general (e.g. an expression has undefined type, return
 // type_table.undefined_type as its type. The caller checks for equality
 // with type_table.undefined_type to see if it was valid).
+// TODO: Maybe pass a second argument which is the expected return type. This is
+// because a lot of times, when we find an error, we don't want to introduce useless
+// cascading errors by return e.g. undefined_type. But currently, we can't know
+// what the caller expects so we can just return that.
 Type* MainTypeCheckVisitor::visit(Expression *expr) {
     LOG_SCOPE;
     assert(!expr->is_undefined());

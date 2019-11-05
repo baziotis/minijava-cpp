@@ -1,1 +1,2 @@
 ERROR_no_matching_method.java: 10:  Semantic Error: No matching method with id: `foo`
+ERROR_no_matching_method.java: 10:  Semantic Error: The type: `Undefined Type (Error)` of the return expression does not match the return type: `int` of method: `test`
