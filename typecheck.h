@@ -1,4 +1,5 @@
 #ifndef TYPECHECK_H
+
 #define TYPECHECK_H
 
 #include "alloc.h"
@@ -138,7 +139,7 @@ struct MainTypeCheckVisitor {
     void    visit(Goal *g);
     void    visit(MainClass *main_class);
     void    visit(IdType *type);
-    void    visit(Method *method);
+    void    visit(Method *method, const char *class_name);
 
     Type*   visit(Expression *expr);
 
@@ -297,8 +298,8 @@ struct Method : public TypeCheckCustomAllocation {
     Method() = delete;
     Method(MethodDeclaration *method_decl);
 
-    void accept(MainTypeCheckVisitor *v) {
-        v->visit(this);
+    void accept(MainTypeCheckVisitor *v, const char *class_name) {
+        v->visit(this, class_name);
     }
 
     size_t offsetof_() const {

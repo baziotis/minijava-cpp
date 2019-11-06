@@ -59,15 +59,16 @@ struct ExprContext {
 };
 
 
-void print_llvalue(llvalue_t v, bool its_bool = false);
-void print_lltype(Type *type);
+void cgen_print_llvalue(llvalue_t v, bool its_bool = false);
+void cgen_print_lltype(Type *type);
 long gen_reg();
 void set_reg(ssize_t v);
 void emit(const char *fmt, ...);
 llvalue_t llvm_op_const(int op, int val1, int val2);
 llvalue_t llvm_op(int op, llvalue_t res1, llvalue_t res2);
 llvalue_t llvm_bitcast_from_i8p(Type *type, llvalue_t ptr);
-llvalue_t get_virtual_method(Type *base_obj_ty, llvalue_t base_obj, Method *method);
+llvalue_t cgen_get_virtual_method(Type *base_obj_ty, llvalue_t base_obj, Method *method);
+llvalue_t cgen_get_field_ptr(Local *field);
 llvalue_t llvm_getelementptr_i32(llvalue_t ptr, llvalue_t index);
 llvalue_t llvm_getelementptr_i8(llvalue_t ptr, size_t offset);
 llvalue_t llvm_load(Type *type, llvalue_t ptr);
@@ -82,3 +83,5 @@ llvalue_t llvm_call(Type *ret_type, Type *base_obj_ty, llvalue_t base_obj,
                     FuncArr<llvalue_t> values);
 llvalue_t llvm_alloca(Type *type);
 void llvm_store(Type *type, llvalue_t value, llvalue_t ptr);
+void cgen_start_method(Method *method, const char *class_name);
+void cgen_end_method();

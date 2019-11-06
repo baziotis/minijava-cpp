@@ -2,7 +2,19 @@
 %class.B = type { %class.A, %class.C*, i32 }
 %class.C = type { i8 (...)** }
 
+define i32 A__foo() {
+entry:
+}
 
+define i1 A__fa() {
+entry:
+}
 
+define i32 B__foo() {
+entry:
+}
 
+define i1 B__bla() {
+entry:
+}
 

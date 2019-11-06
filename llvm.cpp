@@ -72,7 +72,7 @@ static void print_const_llvalue(llvalue_t v, bool its_bool) {
     }
 }
 
-void print_llvalue(llvalue_t v, bool its_bool /* = false */) {
+void cgen_print_llvalue(llvalue_t v, bool its_bool /* = false */) {
     if (v.kind == LLVALUE::CONST) {
         print_const_llvalue(v, its_bool);
     } else {
@@ -107,14 +107,14 @@ llvalue_t llvm_op(int op, llvalue_t res1, llvalue_t res2) {
     case '&': emit("and i1 "); break;
     default: assert(0);
     }
-    print_llvalue(res1);
+    cgen_print_llvalue(res1);
     emit(", ");
-    print_llvalue(res2);
+    cgen_print_llvalue(res2);
     emit("\n");
     return v;
 }
 
-void print_lltype(Type *type) {
+void cgen_print_lltype(Type *type) {
     switch (type->kind) {
     case TY::BOOL: emit("i1"); break;
     case TY::INT: emit("i32"); break;
@@ -129,7 +129,7 @@ void print_lltype(Type *type) {
     }
 }
 
-llvalue_t get_virtual_method(Type *base_obj_ty, llvalue_t base_obj, Method *method) {
+llvalue_t cgen_get_virtual_method(Type *base_obj_ty, llvalue_t base_obj, Method *method) {
     assert(base_obj.kind == LLVALUE::REG);
     long i8ppp = gen_reg();
     print_codegen_indentation();
@@ -137,7 +137,7 @@ llvalue_t get_virtual_method(Type *base_obj_ty, llvalue_t base_obj, Method *meth
     // Note that the vptr is a i8**. So, with this bitcast,
     // and just loading a i8**, we get the vptr.
     emit("%%%ld = bitcast ", i8ppp);
-    print_lltype(base_obj_ty);
+    cgen_print_lltype(base_obj_ty);
     emit(" %%%ld to i8***\n", base_obj.reg);
     long vptr = gen_reg();
     print_codegen_indentation();
@@ -167,13 +167,24 @@ llvalue_t get_virtual_method(Type *base_obj_ty, llvalue_t base_obj, Method *meth
     emit("%%%ld = bitcast i8* %%%ld to (", vmethod.reg, vmethod_i8);
     for (size_t i = 0; i != method->param_len; ++i) {
         Local *param = method->locals[i];
-        print_lltype(param->type);
+        cgen_print_lltype(param->type);
         if (i != method->param_len - 1) {
             emit(", ");
         }
     }
     emit(")*\n");
     return vmethod;
+}
+
+llvalue_t cgen_get_field_ptr(Local *field) {
+    assert(field->kind == (int)LOCAL_KIND::FIELD);
+    llvalue_t reg0 = {LLVALUE::REG, (long)0};
+    llvalue_t ptr = reg0;
+    if (field->offset) {
+        // Move to the right offset
+        ptr = llvm_getelementptr_i8(reg0, field->offset);
+    }
+    return llvm_bitcast_from_i8p(field->type, ptr);
 }
 
 llvalue_t llvm_bitcast_from_i8p(Type *type, llvalue_t ptr) {
@@ -214,7 +225,7 @@ llvalue_t llvm_getelementptr_i32(llvalue_t ptr, llvalue_t index) {
     v.kind = LLVALUE::REG;
     print_codegen_indentation();
     emit("%%%ld = getelementptr inbounds i32, i32* %%%ld, i32 ", v.reg, ptr.reg);
-    print_llvalue(index);
+    cgen_print_llvalue(index);
     emit("\n");
     return v;
 }
@@ -302,7 +313,7 @@ void llvm_gen_lbl(llvm_label_t l) {
 void llvm_branch_cond(llvalue_t cond, llvm_label_t l1, llvm_label_t l2) {
     print_codegen_indentation();
     emit("br i1 ");
-    print_llvalue(cond);
+    cgen_print_llvalue(cond);
     emit(", label %s, label %s\n\n", l1.lbl, l2.lbl);
 }
 
@@ -319,7 +330,7 @@ llvalue_t llvm_and_phi(llvm_label_t l1, llvalue_t v1, llvm_label_t l2) {
     assert(v1.kind == LLVALUE::REG || (v1.val == 0 || v1.val == 1));
     print_codegen_indentation();
     emit("%%%ld = phi i1 [ false, %s ], [ ", v.reg, l1.lbl);
-    print_llvalue(v1);
+    cgen_print_llvalue(v1);
     emit(", %s]\n", l2.lbl);
     return v;
 }
@@ -334,28 +345,28 @@ llvalue_t llvm_call(Type *ret_type, Type *base_obj_ty, llvalue_t base_obj,
     print_codegen_indentation();
     emit("%%%ld = call ", v.reg);
     // Print the return type
-    print_lltype(ret_type);
+    cgen_print_lltype(ret_type);
     emit(" ");  // space
     assert(vmethod.kind == LLVALUE::REG);
     // Print the register that points to the vmethod
     emit("%%%ld(", vmethod.reg);
     // Pass base object as first implicit param.
-    print_lltype(base_obj_ty);
+    cgen_print_lltype(base_obj_ty);
     emit(" ");
-    print_llvalue(base_obj);
+    cgen_print_llvalue(base_obj);
     emit(", ");
     // Print the types of args along with the args themselves
     // as a comma-separate list
     assert(types.len == values.len);
     for (size_t i = 0; i != types.len; ++i) {
-        print_lltype(types[i]);
+        cgen_print_lltype(types[i]);
         emit(" ");  // space
-        print_llvalue(values[i]);
+        cgen_print_llvalue(values[i]);
         if (i != types.len - 1) {
             emit(", ");
         }
     }
-    emit(")");
+    emit(")\n");
     return v;
 }
 
@@ -394,12 +405,73 @@ void llvm_store(Type *type, llvalue_t value, llvalue_t ptr) {
     assert(ptr.kind == LLVALUE::REG);
     print_codegen_indentation();
     emit("store ");
-    print_lltype(type);
+    cgen_print_lltype(type);
     emit(" ");
-    print_llvalue(value);
+    cgen_print_llvalue(value);
     emit(", ");
-    print_lltype(type);
+    cgen_print_lltype(type);
     emit("* ");
-    print_llvalue(ptr);
+    cgen_print_llvalue(ptr);
     emit("\n");
+}
+
+void cgen_start_method(Method *method, const char *class_name) {
+    // Emit function prototype
+    emit("define ");
+    cgen_print_lltype(method->ret_type);
+    emit(" %s__%s(", class_name, method->id);
+    
+    // Initialize parameters with registers and also
+    // print them as part of the method prototype.
+
+    // We're starting from 1, because register 0
+    // is always reserved for the 'this' pointer.
+    // Set a register _only_ for the parameters.
+    size_t local_reg_counter = 1;
+    size_t param_len = method->param_len;
+    size_t param_counter;
+    for (param_counter = 0; param_counter < param_len; ++param_counter) {
+        Local *local = method->locals[param_counter];
+        // Print
+        cgen_print_lltype(local->type);
+        emit(" %%%ld", local_reg_counter);
+        if (param_counter != param_len - 1) {
+          emit(", ");
+        }
+        // Initialize
+        local->kind = (int)LOCAL_KIND::PARAM;
+        local->llval = {LLVALUE::REG, (long)local_reg_counter};
+        // All params are considered initialized.
+        local->initialized = true;
+        ++local_reg_counter;
+    }
+    set_reg(local_reg_counter);
+
+    // Start of body of method
+    emit(") {\n");
+
+    // Initialize locals. Locals initially get a
+    // register that is a pointer to some memory
+    // that can hold the value. It's only when they're
+    // first used that the value is loaded into a reg.
+    // So, initialize them with this pointer and also
+    // generate allocas.
+    size_t locals_len = method->locals.len;
+    size_t var_counter = param_counter;
+    for (; var_counter < locals_len; ++var_counter) {
+        Local *local = method->locals[var_counter];
+        local->kind = (int)LOCAL_KIND::VAR;
+        llvalue_t allocated_mem = llvm_alloca(local->type);
+        local->llval = allocated_mem;
+        // Locals are initially not initialed. We have allocated
+        // memory for them with `alloca`.
+        local->initialized = false;
+    }
+
+    llvm_label_t entry_lbl = llvm_label_t("entry");
+    llvm_gen_lbl(entry_lbl);
+}
+
+void cgen_end_method() {
+    emit("}\n\n");
 }

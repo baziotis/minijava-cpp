@@ -1,5 +1,7 @@
 %class.A = type { i8 (...)** }
 
+define i1 A__test(i1 %1, i1 %2, i1 %3) {
+entry:
     br i1 %1, label and1, label and_end1
 
 and1:
@@ -14,4 +16,5 @@ and_end2:
 
 and_end1:
     %5 = phi i1 [ false, entry ], [ %4, and_end2]
+}
 

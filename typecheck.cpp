@@ -551,7 +551,7 @@ void MainTypeCheckVisitor::visit(IdType *type) {
 
     this->curr_class = type;
     for (Method *method : type->methods) {
-        method->accept(this);
+        method->accept(this, type->id);
     }
     this->curr_class = NULL;
 }
@@ -578,49 +578,12 @@ static bool compatible_types(Type *lhs, Type *rhs) {
 
 extern ExprContext __expr_context;
 
-void MainTypeCheckVisitor::visit(Method *method) {
+void MainTypeCheckVisitor::visit(Method *method, const char *class_name) {
     LOG_SCOPE;
     debug_print("MainTypeCheck::Method %s\n", method->id);
     this->curr_method = method;
-    
-    /// Codegen ///
 
-    // We're starting from 1, because register 0
-    // is always reserved for the 'this' pointer.
-    // Set a register _only_ for the parameters.
-    size_t local_reg_counter = 1;
-    size_t param_len = method->param_len;
-    size_t param_counter;
-    for (param_counter = 0; param_counter < param_len; ++param_counter) {
-        Local *local = method->locals[param_counter];
-        local->kind = (int)LOCAL_KIND::PARAM;
-        local->llval = {LLVALUE::REG, (long)local_reg_counter};
-        // All params are considered initialized.
-        local->initialized = true;
-        ++local_reg_counter;
-    }
-    set_reg(local_reg_counter);
-
-    size_t locals_len = method->locals.len;
-    size_t var_counter = param_counter;
-    for (; var_counter < locals_len; ++var_counter) {
-        Local *local = method->locals[var_counter];
-        local->kind = (int)LOCAL_KIND::VAR;
-        llvalue_t allocated_mem = llvm_alloca(local->type);
-        local->llval = allocated_mem;
-        // Locals are initially not initialed. We have allocated
-        // memory for them with `alloca`.
-        local->initialized = false;
-    }
-    // Separate `alloca`s from the rest of the code.
-    //emit("\n");
-
-    // TODO: Emit the entry label / basic block for each
-    // function
-    __expr_context.curr_lbl = llvm_label_t("entry");
-
-    /// End of Codegen ///
-
+    cgen_start_method(method, class_name);
 
     for (Statement *stmt : method->stmts) {
         stmt->accept(this);
@@ -645,8 +608,7 @@ void MainTypeCheckVisitor::visit(Method *method) {
     }
     this->curr_method = NULL;
 
-    // TODO: Remove that. Added for now to separate IR between functions.
-    emit("\n");
+    cgen_end_method();
 
     // Free arena for objects of function lifetime
     deallocate(MEM::FUNC);
@@ -725,16 +687,7 @@ static Type *typecheck_and_helper(bool is_correct, Expression *expr,
     return undefinedty;
 }
 
-static llvalue_t get_field_ptr(Local *field) {
-    assert(field->kind == (int)LOCAL_KIND::FIELD);
-    llvalue_t reg0 = {LLVALUE::REG, (long)0};
-    llvalue_t ptr = reg0;
-    if (field->offset) {
-        // Move to the right offset
-        ptr = llvm_getelementptr_i8(reg0, field->offset);
-    }
-    return llvm_bitcast_from_i8p(field->type, ptr);
-}
+
 
 // IMPORTANT: DO NOT check if a type is undefined with equality test with
 // type_table.undefined_type. Check a note above on a full explanation.
@@ -811,7 +764,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         } break;
         case LOCAL_KIND::FIELD:
         {
-            llvalue_t ptr = get_field_ptr(local);
+            llvalue_t ptr = cgen_get_field_ptr(local);
             llvalue_t value = llvm_load(local->type, ptr);
             __expr_context.llval = value;
         } break;
@@ -1203,7 +1156,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         }
         Type *ret_type = method->ret_type;
         // Load the virtual method pointer.
-        llvalue_t vmethod = get_virtual_method(type, base_obj, method);
+        llvalue_t vmethod = cgen_get_virtual_method(type, base_obj, method);
         __expr_context.llval = llvm_call(ret_type, type, base_obj,
                                          vmethod, expr_list_types, args);
         return ret_type;
@@ -1251,17 +1204,17 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
     if (lhs->type != rhs_type) {
         long reg = gen_reg();
         emit("%%%ld = bitcast ");
-        print_lltype(rhs_type);
-        print_llvalue(rhs_type);
+        cgen_print_lltype(rhs_type);
+        cgen_print_llvalue(rhs_type);
         emit(" to ");
-        print_lltype(lhs->type);
+        cgen_print_lltype(lhs->type);
         emit("\n");
         value.kind = LLVALUE::REG;
         value.reg = reg;
     }
     
     if (lhs->kind == (int)LOCAL_KIND::FIELD) {
-        llvalue_t ptr = get_field_ptr(lhs);
+        llvalue_t ptr = cgen_get_field_ptr(lhs);
         llvm_store(lhs->type, value, ptr);
     } else if (!lhs->initialized && value.kind != LLVALUE::CONST) {
         // Assume that if it's not initialized,

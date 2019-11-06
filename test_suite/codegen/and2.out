@@ -1,5 +1,7 @@
 %class.A = type { i8 (...)** }
 
+define i1 A__test(i32 %1) {
+entry:
     %2 = add i32 %1, 2
     %3 = icmp slt i32 3, %2
     %4 = icmp eq i1 %3, 0
@@ -10,4 +12,5 @@ and1:
 
 and_end1:
     %5 = phi i1 [ false, entry ], [ 1, and1]
+}
 

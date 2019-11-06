@@ -1,4 +1,7 @@
 %class.A = type { i8 (...)** }
 
+define i32 A__test(i32 %1) {
+entry:
     %2 = add i32 %1, 6
+}
 
