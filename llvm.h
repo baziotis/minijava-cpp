@@ -85,3 +85,4 @@ llvalue_t llvm_alloca(Type *type);
 void llvm_store(Type *type, llvalue_t value, llvalue_t ptr);
 void cgen_start_method(Method *method, const char *class_name);
 void cgen_end_method();
+llvalue_t cgen_cast_value(llvalue_t value, Type *from_ty, Type *to_ty);

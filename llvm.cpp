@@ -31,13 +31,10 @@ long gen_lbl() {
     return lbl;
 }
 
-int j = 0;
-
 void emit(const char *fmt, ...) {
     if (config.codegen) {
         va_list args;
         va_start(args, fmt);
-        print_indentation();
         vprintf(fmt, args);
         va_end(args);
     }
@@ -474,4 +471,17 @@ void cgen_start_method(Method *method, const char *class_name) {
 
 void cgen_end_method() {
     emit("}\n\n");
+}
+
+llvalue_t cgen_cast_value(llvalue_t value, Type *from_ty, Type *to_ty) {
+    long reg = gen_reg();
+    emit("%%%ld = bitcast ");
+    cgen_print_lltype(from_ty);
+    cgen_print_llvalue(value);
+    emit(" to ");
+    cgen_print_lltype(to_ty);
+    emit("\n");
+    value.kind = LLVALUE::REG;
+    value.reg = reg;
+    return value;
 }

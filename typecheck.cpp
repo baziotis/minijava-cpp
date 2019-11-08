@@ -192,7 +192,7 @@ void TypeTable::compute_and_print_offsets_for_type(IdType *type) {
     }
     size_t methods_size = running_offset - start_methods;
 
-    
+    // Generate offsets for fields and also emit the fields.
     running_offset = start_fields;
     for (Local *field : type->fields) {
         field->offset = running_offset;
@@ -1202,15 +1202,7 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
     llvalue_t value = __expr_context.llval;
     // Bitcast the value to the type of the lhs
     if (lhs->type != rhs_type) {
-        long reg = gen_reg();
-        emit("%%%ld = bitcast ");
-        cgen_print_lltype(rhs_type);
-        cgen_print_llvalue(rhs_type);
-        emit(" to ");
-        cgen_print_lltype(lhs->type);
-        emit("\n");
-        value.kind = LLVALUE::REG;
-        value.reg = reg;
+        cgen_cast_value(value, rhs_type, lhs->type);
     }
     
     if (lhs->kind == (int)LOCAL_KIND::FIELD) {
