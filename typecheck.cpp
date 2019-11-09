@@ -1202,7 +1202,7 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
     llvalue_t value = __expr_context.llval;
     // Bitcast the value to the type of the lhs
     if (lhs->type != rhs_type) {
-        cgen_cast_value(value, rhs_type, lhs->type);
+        value = cgen_cast_value(value, rhs_type, lhs->type);
     }
     
     if (lhs->kind == (int)LOCAL_KIND::FIELD) {

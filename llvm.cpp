@@ -475,8 +475,10 @@ void cgen_end_method() {
 
 llvalue_t cgen_cast_value(llvalue_t value, Type *from_ty, Type *to_ty) {
     long reg = gen_reg();
-    emit("%%%ld = bitcast ");
+    print_codegen_indentation();
+    emit("%%%ld = bitcast ", reg);
     cgen_print_lltype(from_ty);
+    emit(" ");
     cgen_print_llvalue(value);
     emit(" to ");
     cgen_print_lltype(to_ty);
