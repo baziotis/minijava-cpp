@@ -12,5 +12,6 @@ bounds_len1:
 bounds_len_end1:
     %4 = getelementptr inbounds i32, i32* %1, i32 4
     %5 = load i32, i32* %4, align 4
+    ret i32 %5
 }
 

@@ -3,5 +3,6 @@
 define i32 A__test(i32 %1) {
 entry:
     %2 = add i32 %1, 6
+    ret i32 %2
 }
 

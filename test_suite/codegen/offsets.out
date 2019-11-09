@@ -4,17 +4,21 @@
 
 define i32 A__foo() {
 entry:
+    ret i32 1
 }
 
 define i1 A__fa() {
 entry:
+    ret i1 0
 }
 
 define i32 B__foo() {
 entry:
+    ret i32 2
 }
 
 define i1 B__bla() {
 entry:
+    ret i1 1
 }
 

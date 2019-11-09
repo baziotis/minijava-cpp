@@ -595,6 +595,7 @@ void MainTypeCheckVisitor::visit(Method *method, const char *class_name) {
         Type *ret_type = method->ret_expr->accept(this);
         assert(ret_type);
         assert(method->ret_type);
+        llvalue_t ret_val = __expr_context.llval;
         if (!compatible_types(method->ret_type, ret_type)) {
             location_t loc_here = method->ret_expr->loc;
             const char *name = ret_type->name();
@@ -604,6 +605,8 @@ void MainTypeCheckVisitor::visit(Method *method, const char *class_name) {
                             "` of the return expression does not match the ",
                             "return type: `", method->ret_type->name(),
                             "` of method: `", method->id, "`");
+        } else {
+            llvm_ret(ret_type, ret_val);
         }
     }
     this->curr_method = NULL;

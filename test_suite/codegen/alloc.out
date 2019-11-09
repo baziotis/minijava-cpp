@@ -13,5 +13,6 @@ entry:
     %8 = bitcast i8* %7 to i32*
     store i32* %8, i32** %2
     %9 = load i32*, i32** %2, align 8
+    ret %class.A* %6
 }
 

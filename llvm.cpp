@@ -487,3 +487,12 @@ llvalue_t cgen_cast_value(llvalue_t value, Type *from_ty, Type *to_ty) {
     value.reg = reg;
     return value;
 }
+
+void llvm_ret(Type *ty, llvalue_t val) {
+    print_codegen_indentation();
+    emit("ret ");
+    cgen_print_lltype(ty);
+    emit(" ");
+    cgen_print_llvalue(val);
+    emit("\n");
+}
