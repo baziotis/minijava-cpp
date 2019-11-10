@@ -134,6 +134,7 @@ struct UndefinedStatement : public Statement {
     }
 };
 
+// TODO: Could we remove that altogether?
 struct BlockStatement : public Statement {
     Buf<Statement*> block;
 

@@ -833,19 +833,23 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         }
         llvalue_t len = __expr_context.llval;
         // Check for negative size
+        // TODO: Do a check when the value is not const.
         if (len.kind == LLVALUE::CONST && len.val < 0) {
             typecheck_error(expr->loc, "Length of array allocation with ",
                             "constant value: ", len.val, " is negative.");
         }
-        // TODO: Do a check when the value is not const.
         /// Codegen ///
         constexpr int sizeof_int = 4;
         Type *int_arr_type = this->type_table.int_arr_type;
         if (len.kind == LLVALUE::CONST) {
+            // Add 1 more element which is used to save the length.
+            len.val += 1;
             __expr_context.llval = llvm_calloc(int_arr_type, {LLVALUE::CONST,
                                                    (int)(len.val * sizeof_int)});
         } else {
-            llvalue_t size = llvm_op('*', len, {LLVALUE::CONST, (int)4});
+            // Add 1 more element which is used to save the length.
+            len = llvm_op('+', len, {LLVALUE::CONST, (int)1});
+            llvalue_t size = llvm_op('*', len, {LLVALUE::CONST, sizeof_int});
             __expr_context.llval = llvm_calloc(int_arr_type, size);
         }
         /// End of Codegen ///
@@ -1102,7 +1106,9 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         if (index.kind == LLVALUE::CONST) {
             // If index is constant and negative, we check it above.
             // Take into consideration the 4 bytes of the length.
-            index.val += 4;
+            // Note: Because we're indexing an i32*, the 4 bytes are
+            // +1 offset.
+            index.val += 1;
         } else {
             lbl_pair_t lbls_neg_check;
             lbls_neg_check.construct("bounds_neg");
@@ -1113,7 +1119,9 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             // TODO: Do something better
             emit("    EXIT\n\n");
             llvm_gen_lbl(lbls_neg_check.end);
-            index = llvm_op('+', index, {LLVALUE::CONST, (int)4});
+            // Note: As above, because we're indexing an i32*, the 4 bytes are
+            // +1 offset.
+            index = llvm_op('+', index, {LLVALUE::CONST, (int)1});
         }
         ptr = llvm_getelementptr_i32(ptr, index);
         __expr_context.llval = llvm_load(this->type_table.int_type, ptr);
@@ -1199,9 +1207,16 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
                         lhs->type->name(), "`");
     }
     if (!is_correct) {
+        lhs->initialized = true;
         return;
     }
     /// Codegen ///
+    // TODO - IMPORTANT: If it is an array, save the length in the
+    // first 4 bytes (i.e. its first element).
+    // Note: This requires the knowledge of the length llvalue. This is known
+    // in the EXPR::ARR_ALLOC (the `len`) and is not return in some way, so possibly
+    // save it in `__expr_context`.
+
     llvalue_t value = __expr_context.llval;
     // Bitcast the value to the type of the lhs
     if (lhs->type != rhs_type) {
@@ -1224,6 +1239,7 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
     } else {
         lhs->llval = value;
     }
+    /// End of Codegen ///
     lhs->initialized = true;
 }
 
@@ -1233,24 +1249,58 @@ void MainTypeCheckVisitor::visit(ArrayAssignmentStatement *arr_asgn_stmt) {
     assert(this->curr_method);
     assert(this->curr_class);
     Local *arr = lookup_local(arr_asgn_stmt->id, this->curr_method, this->curr_class);
+    bool is_correct = true;
     if (!arr) {
         typecheck_error(arr_asgn_stmt->loc, "In array assignment statement, array: `",
                         arr_asgn_stmt->id, "` is not defined");
+        is_correct = false;
+    }
+    if (!arr->initialized) {
+        typecheck_error(arr_asgn_stmt->loc, "In array assignment statement, array: `",
+                        arr_asgn_stmt->id, "` has not been initialized.");
     }
     assert(arr_asgn_stmt->index);
     Type *index_type = arr_asgn_stmt->index->accept(this);
+    llvalue_t index = __expr_context.llval;
     if (index_type != this->type_table.int_type) {
         typecheck_error(arr_asgn_stmt->loc, "In array assignment statement, the ",
                         "index expression must have `int` type but has: `",
                         index_type->name(), "`");
+        is_correct = false;
     }
     assert(arr_asgn_stmt->rhs);
     Type *rhs_type = arr_asgn_stmt->rhs->accept(this);
+    llvalue_t rhs_val = __expr_context.llval;
     if (rhs_type != this->type_table.int_type) {
         typecheck_error(arr_asgn_stmt->loc, "In array assignment statement, the ",
                         "right-hand-side expression must have `int` type but has: `",
                         rhs_type->name(), "`");
+        is_correct = false;
     }
+    if (!is_correct) {
+        arr->initialized = true;
+        return;
+    }
+    /// Codegen ///
+    // Get the pointer
+    llvalue_t ptr;
+    if (arr->kind == (int)LOCAL_KIND::FIELD) {
+        ptr = cgen_get_field_ptr(arr);
+    } else {
+        assert(arr->initialized);  // from above
+        ptr = arr->llval;
+    }
+    // Store the value (by taking into consideration
+    // that the first element is used to save the length).
+    if (index.kind == LLVALUE::CONST) {
+        index.val += 1;
+    } else {
+        index = llvm_op('+', index, {LLVALUE::CONST, (int)1});
+    }
+    ptr = llvm_getelementptr_i32(ptr, index);
+    assert(rhs_type == this->type_table.int_type);
+    llvm_store(rhs_type, rhs_val, ptr);
+    /// End of Codegen ///
     arr->initialized = true;
 }
 

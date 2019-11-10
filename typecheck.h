@@ -241,6 +241,12 @@ enum class LOCAL_KIND {
 
 // TODO: Check if `id` fields are actually ever used for Locals
 // and Methods
+// TODO: We could save the size of arrays if it is known at compile-time
+// (i.e. it is constant) and then if we index it with a constant index
+// and it is out of bounds, we can issue an error at compile-time. That
+// requires a little bit of thinking because we need 4 more bytes in each
+// local. Those are not very much, but they will be wasted for all other
+// locals. Also, this scenario is not very possible.
 struct Local  : public TypeCheckCustomAllocation {
     const char *id;
     Type *type;
