@@ -56,6 +56,9 @@ struct lbl_pair_t {
 struct ExprContext {
     llvm_label_t curr_lbl;
     llvalue_t llval;
+    // Saved by EXPR::ARR_ALLOC and
+    // used only in AssignmentStatement only for arrays.
+    llvalue_t len;
 };
 
 

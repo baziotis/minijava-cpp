@@ -11,6 +11,7 @@ entry:
     %6 = load %class.A*, %class.A** %1, align 8
     %7 = call noalias i8* @calloc(i32 1, i32 60)
     %8 = bitcast i8* %7 to i32*
+    store i32 14, i32* %8
     store i32* %8, i32** %2
     %9 = load i32*, i32** %2, align 8
     ret %class.A* %6

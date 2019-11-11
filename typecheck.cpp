@@ -839,6 +839,8 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
                             "constant value: ", len.val, " is negative.");
         }
         /// Codegen ///
+        // Save the len
+        __expr_context.len = len;
         constexpr int sizeof_int = 4;
         Type *int_arr_type = this->type_table.int_arr_type;
         if (len.kind == LLVALUE::CONST) {
@@ -1211,33 +1213,47 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
         return;
     }
     /// Codegen ///
-    // TODO - IMPORTANT: If it is an array, save the length in the
-    // first 4 bytes (i.e. its first element).
-    // Note: This requires the knowledge of the length llvalue. This is known
-    // in the EXPR::ARR_ALLOC (the `len`) and is not return in some way, so possibly
-    // save it in `__expr_context`.
-
-    llvalue_t value = __expr_context.llval;
-    // Bitcast the value to the type of the lhs
-    if (lhs->type != rhs_type) {
-        value = cgen_cast_value(value, rhs_type, lhs->type);
-    }
-    
+    llvalue_t rhs_val = __expr_context.llval;
+    llvalue_t ptr;
     if (lhs->kind == (int)LOCAL_KIND::FIELD) {
-        llvalue_t ptr = cgen_get_field_ptr(lhs);
-        llvm_store(lhs->type, value, ptr);
-    } else if (!lhs->initialized && value.kind != LLVALUE::CONST) {
+        ptr = cgen_get_field_ptr(lhs);
+    } else {
+        // This `ptr` will be used only if
+        // `lhs` is not initialized.
         // Assume that if it's not initialized,
         // the current assigned `llval` is a pointer.
         // The pointer we got from `alloca`.
-        llvalue_t ptr = lhs->llval;
-        llvm_store(lhs->type, value, ptr);
+        ptr = lhs->llval;
+    }
+    // If it is an array, save the length in the
+    // first 4 bytes (i.e. its first element).
+    if (lhs->type->kind == TY::ARR) {
+        // Note that if we're here, `rhs_val`
+        // has the array we just allocated. What
+        // we need to is store in the first element
+        // of this array.
+        llvalue_t len = __expr_context.len;
+        // We don't really need to GEP because it's the first element.
+        //llvm_getelementptr_i32(rhs_val, {LLVALUE::CONST, (int)0});
+        llvm_store(this->type_table.int_type, len, rhs_val);
+    }
+    // Bitcast the value to the type of the lhs
+    if (lhs->type != rhs_type) {
+        rhs_val = cgen_cast_value(rhs_val , rhs_type, lhs->type);
+    }
+    // Store the value: Handle fields, unitialized locals
+    // and initialized locals separately.
+    if (lhs->kind == (int)LOCAL_KIND::FIELD) {
+        llvm_store(lhs->type, rhs_val, ptr);
+    } else if (!lhs->initialized && rhs_val.kind != LLVALUE::CONST) {
+        llvm_store(lhs->type, rhs_val, ptr);
         // Load it so we have it in a register.
         // TODO: Should we postpone this until we have an actual use?
         llvalue_t loaded = llvm_load(lhs->type, ptr);
         lhs->llval = loaded;
     } else {
-        lhs->llval = value;
+        // Just set `rhs_val` as the new llvalue.
+        lhs->llval = rhs_val;
     }
     /// End of Codegen ///
     lhs->initialized = true;
