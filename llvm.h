@@ -15,12 +15,12 @@ struct llvm_label_t {
         generated = false;
     }
 
-    void construct(const char *_lbl, long num) {
+    void construct(const char *_lbl, long num = -1) {
         assert(!generated);
         assert(_lbl);
         assert(lbl == NULL);
         if (num == -1) {
-            long num = gen_lbl();
+            num = gen_lbl();
         }
 
         // Labels are allocated in MEM::FUNC arena.
@@ -53,12 +53,28 @@ struct lbl_pair_t {
     }
 };
 
+struct TrackAssignment {
+    llvalue_t llval;
+    bool assigned;
+};
+
+typedef Buf<TrackAssignment> TrackAssignmentBuf;
+
 struct ExprContext {
     llvm_label_t curr_lbl;
     llvalue_t llval;
     // Saved by EXPR::ARR_ALLOC and
     // used only in AssignmentStatement only for arrays.
     llvalue_t len;
+
+    Method *method;
+
+    int nesting_level;
+    int max_nesting_level;
+    bool in_if;
+    // One buf for every nesting level
+    Buf<TrackAssignmentBuf> if_bufs;
+    Buf<TrackAssignmentBuf> else_bufs;
 };
 
 
@@ -66,6 +82,7 @@ void cgen_print_llvalue(llvalue_t v, bool its_bool = false);
 void cgen_print_lltype(Type *type);
 long gen_reg();
 void set_reg(ssize_t v);
+void reset_lbl();
 void emit(const char *fmt, ...);
 llvalue_t llvm_op_const(int op, int val1, int val2);
 llvalue_t llvm_op(int op, llvalue_t res1, llvalue_t res2);

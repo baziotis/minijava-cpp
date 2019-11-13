@@ -1,0 +1,111 @@
+%class.A = type { i8 (...)** }
+
+define i32 A__foo(i1 %1) {
+    %2 = alloca i32, align 4
+entry:
+    %3 = icmp eq i1 %1, 1
+    br i1 %3, label if1, label else1
+
+if1:
+    %4 = icmp eq i1 %1, 1
+    br i1 %4, label if2, label else2
+
+if2:
+    br if_end2
+
+else2:
+    br if_end2
+
+if_end2:
+    %5 = phi i32 [ 2, if2 ], [ 7, else2 ]
+    br if_end1
+
+else1:
+    br if_end1
+
+if_end1:
+    %6 = phi i32 [ %5, if_end2 ], [ 7, else1 ]
+    ret i32 %6
+}
+
+define i32 A__bar(i1 %1) {
+    %2 = alloca i32, align 4
+entry:
+    %3 = icmp eq i1 %1, 1
+    br i1 %3, label if1, label else1
+
+if1:
+    %4 = icmp eq i1 %1, 1
+    br i1 %4, label if2, label else2
+
+if2:
+    br if_end2
+
+else2:
+    br if_end2
+
+if_end2:
+    %5 = phi i32 [ 7, if2 ], [ 2, else2 ]
+    br if_end1
+
+else1:
+    br if_end1
+
+if_end1:
+    %6 = phi i32 [ %5, if_end2 ], [ 7, else1 ]
+    ret i32 %6
+}
+
+define i32 A__fa(i1 %1) {
+    %2 = alloca i32, align 4
+entry:
+    %3 = icmp eq i1 %1, 1
+    br i1 %3, label if1, label else1
+
+if1:
+    br if_end1
+
+else1:
+    br if_end1
+
+if_end1:
+    %4 = phi i32 [ 3, if1 ], [ 4, else1 ]
+    ret i32 %4
+}
+
+define i32 A__test1(i1 %1) {
+    %2 = alloca %class.A*, align 8
+entry:
+    %3 = call noalias i8* @calloc(i32 1, i32 8)
+    %4 = bitcast i8* %3 to %class.A*
+    store %class.A* %4, %class.A** %2
+    %5 = load %class.A*, %class.A** %2, align 8
+    %6 = icmp eq i1 %1, 1
+    br i1 %6, label if1, label else1
+
+if1:
+    %7 = call noalias i8* @calloc(i32 1, i32 8)
+    %8 = bitcast i8* %7 to %class.A*
+    br if_end1
+
+else1:
+    %9 = icmp eq i1 %1, 1
+    br i1 %9, label if2, label else2
+
+if2:
+    br if_end2
+
+else2:
+    %10 = call noalias i8* @calloc(i32 1, i32 8)
+    %11 = bitcast i8* %10 to %class.A*
+    br if_end2
+
+if_end2:
+    %12 = phi %class.A* [ %5, if2 ], [ %11, else2 ]
+    br if_end1
+
+if_end1:
+    %13 = phi %class.A* [ %8, if1 ], [ %12, if_end2 ]
+    ret i32 5
+}
+

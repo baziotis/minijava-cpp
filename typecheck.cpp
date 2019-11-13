@@ -583,6 +583,8 @@ void MainTypeCheckVisitor::visit(Method *method, const char *class_name) {
     debug_print("MainTypeCheck::Method %s\n", method->id);
     this->curr_method = method;
 
+    __expr_context.method = method;
+
     cgen_start_method(method, class_name);
 
     for (Statement *stmt : method->stmts) {
@@ -735,6 +737,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         } else if (!local->initialized) {
             // Only variables can remain uninitialized. Check
             // TypeDeclaration and MethodDeclaration in DeclarationVisitor.
+            // TODO - IMPORTANT: This does not consider all possible paths.
             typecheck_error(expr->loc, "Variable: `",
                             expr->id, "` might have not been initialized.");
         }
@@ -1246,6 +1249,12 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
     if (lhs->kind == (int)LOCAL_KIND::FIELD) {
         llvm_store(lhs->type, rhs_val, ptr);
     } else if (!lhs->initialized && rhs_val.kind != LLVALUE::CONST) {
+        // TODO:
+        // This whole `store` and alloca at the start of the function
+        // can just be eliminated. Just use the llvalue that you have
+        // (i.e. if you have a = b, and `b` is not constant, use the llvalue
+        // of `b` as the new llval for `a`. If it is, then again use its llval
+        // for `a`).
         llvm_store(lhs->type, rhs_val, ptr);
         // Load it so we have it in a register.
         // TODO: Should we postpone this until we have an actual use?
@@ -1254,6 +1263,17 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
     } else {
         // Just set `rhs_val` as the new llvalue.
         lhs->llval = rhs_val;
+    }
+    // Track assignment
+    if (__expr_context.nesting_level) {
+        TrackAssignment tasgn;
+        tasgn.assigned = true;
+        tasgn.llval = lhs->llval;
+        if (__expr_context.in_if) {
+            __expr_context.if_bufs[__expr_context.nesting_level - 1][lhs->index] = tasgn;
+        } else {
+            __expr_context.else_bufs[__expr_context.nesting_level - 1][lhs->index] = tasgn;
+        }
     }
     /// End of Codegen ///
     lhs->initialized = true;
@@ -1272,6 +1292,7 @@ void MainTypeCheckVisitor::visit(ArrayAssignmentStatement *arr_asgn_stmt) {
         is_correct = false;
     }
     if (!arr->initialized) {
+        // TODO - IMPORTANT: This does not consider all possible paths.
         typecheck_error(arr_asgn_stmt->loc, "In array assignment statement, array: `",
                         arr_asgn_stmt->id, "` has not been initialized.");
     }
@@ -1322,17 +1343,265 @@ void MainTypeCheckVisitor::visit(ArrayAssignmentStatement *arr_asgn_stmt) {
 
 void MainTypeCheckVisitor::visit(IfStatement *if_stmt) {
     LOG_SCOPE;
-    debug_print("MainTypeCheck::IfStatement\n");
-    Type *cond = if_stmt->cond->accept(this);
-    if (cond != this->type_table.bool_type) {
+    debug_print("MainTypeCheck::IfStatement:\n");
+    Type *condty = if_stmt->cond->accept(this);
+    if (condty != this->type_table.bool_type) {
         typecheck_error(if_stmt->loc, "In if statement, the ",
                         "condition expression must have `boolean` type but has: `",
-                        cond->name(), "`");
+                        condty->name(), "`");
     }
+    /// Codegen ///
+    llvalue_t cond = __expr_context.llval;
+    // Handle constant condition. Eliminate the branch
+    // and elide the never-executed body.
+    if (cond.kind == LLVALUE::CONST) {
+        // Elide either the `if` body or the `else` body
+        // depending on the condition constant value.
+        // Assume that the user does not want to type-
+        // check the elided body (IIRC if(0) in Java
+        // works like #ifdef 0 in C).
+        if (cond.val) {
+            assert(if_stmt->then);
+            if_stmt->then->accept(this);
+        } else {
+            assert(if_stmt->else_);
+            if_stmt->else_->accept(this);
+        }
+        return;
+    }
+    
+    // Generate the 3 labels used. According to the condition,
+    // we either go to if_lbl or else_lbl. Both bodies at the end
+    // should jump to end_lbl.
+    llvm_label_t if_lbl, else_lbl, end_lbl;
+    long lbl = gen_lbl();
+    if_lbl.construct("if", lbl);
+    else_lbl.construct("else", lbl);
+    end_lbl.construct("if_end", lbl);
+    
+    // Emit a comparison and branch
+    llvalue_t cmp_res;
+    cmp_res.kind = LLVALUE::REG;
+    cmp_res.reg = gen_reg();
+    emit("    %%%ld = icmp eq i1 %%%ld, 1\n", cmp_res.reg, cond.reg);
+    llvm_branch_cond(cmp_res, if_lbl, else_lbl);
+
+    /*
+    //// Algorithm for emission of phi nodes ////
+    
+    -- A couple of important info --
+    Note that this compiler does not use the classic load / store model.
+    Clang / LDC and generally most of the LLVM front-ends, whenever we
+    use a variable, they load it from memory. And when they assign to
+    a variable, they store to. Implementing this model is simple - just
+    `alloca` every local variable and use its memory. For parameters, because
+    they come in registers, we just `alloca` a copy of them as well.
+    This is simple and effective for all kinds of reasons:
+    1) First and foremost, because of its simplicity, bugs are less likely to happen.
+    2) Debuggers have an easier time when they know that the memory for a variable
+       is in a specific place in memory.
+    3) LLVM will remove them anyway in optimized builds.
+
+    But I tried to do something better, for locals (variables and params), I tried
+    to use registers only by wrapping them in llvalue_t. That scheme makes
+    constant-folding and constant-propagation easy.
+    An example:
+    a = 2;  // underneath, an llvalue is created, which is of kind CONST
+    b = a;  // now, `llval` for the local `b` is the previous CONST llvalue and so on.
+
+    However, with this scheme, problems are introduced with conditional code.
+    Let's say we have this:
+    if (cond) {
+        a = 2;
+    } else {
+        a = 3;
+    }
+
+    What llvalue should `a` get? 2 or 3 ? We can't know at compile-time (assuming
+    that `cond` is not known at compile-time).
+    What we have to do is emit a phi node, i.e. this code above should translate to:
+    
+        icmp cond, 1
+        br i1 cond, if1, else1
+    if1:
+        br if_end1
+    else1:
+        br if_end1
+    if_end1:
+        %1 = phi [ 2, if1 ], [ 3, else1 ]
+
+    Now, the `llval` for the local `a` is the llvalue of kind REG, where its `reg`
+    is 1 (i.e. %1).
+    So, now the question is how do we generate these phi nodes.
+    
+    -- The algorithm --
+    We have 2 places where we need this scheme: ifs and whiles. Let's explain
+    `if` and you'll get the point.
+    Note that an `if` is always followed by an `else`. Thus, we always will go either
+    to the `if` body or the `else` body. As such, let's say we want to correctly
+    emit code for local `a`. There are 4 cases:
+    1) Neither of the 2 bodies assignes to `a`. This is the simplest case, keep
+       its current `llval`.
+    2) The `if` body _only_ assigns to it. Then, keep the (last) value that it
+       assigns and then emit a phi node between this assigned value and the
+       previous / initial value. For example:
+       a = 2;
+       if (cond) {
+           a = 3;
+       } else {
+           // No assignment to `a`
+       }
+       emit a phi node between 2 and 3 for `a`.
+
+    3) The `else` body _only_ assigns to it. Just as case 2)
+    4) Both assign to it. Then, emit a phi node between the 2 assigned values.
+
+    So, there are a couple of things we have to do. First of all, track for each
+    `if` statement the assignments in its bodies. We keep a TrackAssignment
+    for each local of the function, so a TrackAssignmentBuf.
+    We use a TrackAssignmentBuf for each nesting level of the function, _not_ for
+    every if. For example:
+    if () {
+        if () {
+        }
+        ...
+        if () {  <-- We can reuse the same buffer for this if as we're finished with
+                     with the above. However we can't use it for the outer if because
+                     that's still on the run.
+        }
+    }
+
+    Actually, we keep 2 buffers for each nesting level. One for the if body and
+    one for the else. Because we want to save them separately so we can then
+    apply the 4 cases above.
+    
+    Assuming we have those buffers, on the _return_ of processing the
+    `if` and `else` bodies, we apply the 4 cases below.
+    */
+
     assert(if_stmt->then);
     assert(if_stmt->else_);
+
+    __expr_context.nesting_level += 1;
+    debug_print("IfStatement nesting level: %d\n", __expr_context.nesting_level);
+    
+    int nesting_level = __expr_context.nesting_level;
+    size_t locals_len = __expr_context.method->locals.len;
+    // If we surpassed max nesting level, allocate 2 new buffers.
+    if (nesting_level > __expr_context.max_nesting_level) {
+        __expr_context.max_nesting_level = nesting_level;
+        TrackAssignmentBuf if_buf, else_buf;
+        if_buf.reserve(locals_len);
+        else_buf.reserve(locals_len);
+        __expr_context.if_bufs.push(if_buf);
+        __expr_context.else_bufs.push(else_buf);
+    }
+    Method *method = __expr_context.method;
+      
+    // Note: You'll see the `nesting_level - 1` a lot below. The reason
+    // for the -1 is that if you think about, we don't need to keep
+    // assignment info for level 0. So, the 0th buffers are for nesting
+    // level 1 etc.
+
+    // Clear the 2 buffers in the current nesting level
+    for (size_t i = 0; i != locals_len; ++i) {
+        TrackAssignment tasgn;
+        tasgn.assigned = false;
+        // TODO: There might be a better way to decide about this.
+        // Essentially, if we're in the first nesting level, we can just get
+        // the local value. But if not, then we have to take from the previous level
+        // as the `llval` of the local might have changed but we don't want this new value:
+        /*
+        if (cond) {
+            a = new A();  // let's say %5
+        } else {
+            // Now, `llval` of `a` is %5 but we don't want that.
+            if (cond) {
+            } else {
+                a = new A();
+            }
+        }
+        */
+        if (nesting_level > 1) {
+            if (__expr_context.in_if) {
+                tasgn.llval = __expr_context.if_bufs[nesting_level - 2][i].llval;
+            } else {
+                tasgn.llval = __expr_context.else_bufs[nesting_level - 2][i].llval;
+            }
+        } else {
+            tasgn.llval = method->locals[i]->llval;
+        }
+        __expr_context.if_bufs[nesting_level - 1][i] = tasgn;
+        __expr_context.else_bufs[nesting_level - 1][i] = tasgn;
+    }
+    
+    // Save if we're currently inside an if or an else.
+    bool save_in_if = __expr_context.in_if;
+    // Save the label we're currently in.
+    llvm_label_t save_initial_lbl = __expr_context.curr_lbl;
+    llvm_gen_lbl(if_lbl);
+    __expr_context.in_if = true;
     if_stmt->then->accept(this);
+    // Save the last label in if, because this is the label / basic block
+    // from which we jump to the `end_lbl`. And we need this info
+    // for the emission of the phi node.
+    llvm_label_t save_last_lbl_in_if = __expr_context.curr_lbl;
+    llvm_branch(end_lbl);
+    llvm_gen_lbl(else_lbl);
+    __expr_context.in_if = false;
     if_stmt->else_->accept(this);
+    // Save the last label in `else` for the same reason as above.
+    llvm_label_t save_last_lbl_in_else = __expr_context.curr_lbl;
+    llvm_branch(end_lbl);
+    llvm_gen_lbl(end_lbl);
+    __expr_context.in_if = save_in_if;
+    
+    // 2 bufs that track assignments for the 2 bodies we just processed (if and else)
+    TrackAssignmentBuf if_buf = __expr_context.if_bufs[nesting_level - 1];
+    TrackAssignmentBuf else_buf = __expr_context.else_bufs[nesting_level - 1];
+    
+    // Go through all the locals and apply the 4 cases above.
+    for (size_t i = 0; i < method->locals.len; ++i) {
+        bool assigned_if = if_buf[i].assigned;
+        bool assigned_else = else_buf[i].assigned;
+        if (assigned_if || assigned_else) {
+            Local *local = method->locals[i];
+            // If only one of them assigned to it, then the initial
+            // value is on the _other_ buffer. If both bodies
+            // assigned to it, then just emit the nodes between the 2.
+            // So, in any case, emit a phi node between the 2.
+            // Note: Because there's no `if` without `else`, we will
+            // always go to either one of the 2.
+            llvalue_t if_value = if_buf[i].llval;
+            llvalue_t else_value = else_buf[i].llval;
+            llvalue_t new_val;
+            new_val.kind = LLVALUE::REG;
+            new_val.reg = gen_reg();
+            emit("    %%%ld = phi ", new_val.reg);
+            cgen_print_lltype(local->type);
+            emit(" [ ");
+            cgen_print_llvalue(if_value);
+            emit(", %s ], [ ", save_last_lbl_in_if.lbl);
+            cgen_print_llvalue(else_value);
+            emit(", %s ]\n", save_last_lbl_in_else.lbl);
+            // Save the new val for the local
+            local->llval = new_val;
+            // Pass on the previous nesting level. If we have an assignment
+            // in an enclosed level, then we have in its outer as well.
+            if (nesting_level > 1) {
+                if (__expr_context.in_if) {
+                    __expr_context.if_bufs[nesting_level - 2][i].assigned = true;
+                    __expr_context.if_bufs[nesting_level - 2][i].llval = new_val;
+                } else {
+                    __expr_context.else_bufs[nesting_level - 2][i].assigned = true;
+                    __expr_context.else_bufs[nesting_level - 2][i].llval = new_val;
+                }
+            }
+        } /* else {
+            // Do nothing, no assignment was involved.
+        } */
+    }
+    __expr_context.nesting_level -= 1;
 }
 
 void MainTypeCheckVisitor::visit(WhileStatement *while_stmt) {

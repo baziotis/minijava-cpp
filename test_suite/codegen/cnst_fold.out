@@ -6,3 +6,10 @@ entry:
     ret i32 %2
 }
 
+define i32 A__foo() {
+    %1 = alloca i32, align 4
+    %2 = alloca i32, align 4
+entry:
+    ret i32 5
+}
+

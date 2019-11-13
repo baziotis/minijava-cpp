@@ -263,6 +263,7 @@ struct Local  : public TypeCheckCustomAllocation {
         // Offset for fields.
         size_t offset;
     };
+    size_t index;
     // We have to use an `int` instead of LOCAL_KIND to suppress
     // stupid warning.
     int kind : 3;

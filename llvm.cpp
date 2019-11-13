@@ -25,8 +25,13 @@ long gen_reg() {
     return reg;
 }
 
+static long lbl;
+
+void reset_lbl() {
+    lbl = 0;   
+}
+
 long gen_lbl() {
-    static long lbl = 0;
     ++lbl;
     return lbl;
 }
@@ -413,6 +418,7 @@ void llvm_store(Type *type, llvalue_t value, llvalue_t ptr) {
 }
 
 void cgen_start_method(Method *method, const char *class_name) {
+    reset_lbl();
     // Emit function prototype
     emit("define ");
     cgen_print_lltype(method->ret_type);
@@ -438,6 +444,7 @@ void cgen_start_method(Method *method, const char *class_name) {
         // Initialize
         local->kind = (int)LOCAL_KIND::PARAM;
         local->llval = {LLVALUE::REG, (long)local_reg_counter};
+        local->index = param_counter;
         // All params are considered initialized.
         local->initialized = true;
         ++local_reg_counter;
@@ -458,6 +465,7 @@ void cgen_start_method(Method *method, const char *class_name) {
     for (; var_counter < locals_len; ++var_counter) {
         Local *local = method->locals[var_counter];
         local->kind = (int)LOCAL_KIND::VAR;
+        local->index = var_counter;
         llvalue_t allocated_mem = llvm_alloca(local->type);
         local->llval = allocated_mem;
         // Locals are initially not initialed. We have allocated
