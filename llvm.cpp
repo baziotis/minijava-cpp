@@ -74,6 +74,7 @@ static void print_const_llvalue(llvalue_t v, bool its_bool) {
     }
 }
 
+// TODO: We should probably pass the type here.
 void cgen_print_llvalue(llvalue_t v, bool its_bool /* = false */) {
     if (v.kind == LLVALUE::CONST) {
         print_const_llvalue(v, its_bool);

@@ -94,11 +94,20 @@ struct BinaryExpression : public Expression {
     };
 };
 
-
+enum class STMT {
+    UNDEFINED,
+    BLOCK,
+    ASGN,
+    ARR_ASGN,
+    IF,
+    WHILE,
+    PRINT
+};
 
 /* Statements
  */
 struct Statement : public ParsingPersistentAllocation {
+    STMT kind;
     location_t loc;
 
     virtual const char *name() const = 0;
@@ -119,6 +128,10 @@ struct Statement : public ParsingPersistentAllocation {
 };
 
 struct UndefinedStatement : public Statement {
+    UndefinedStatement() {
+        kind = STMT::UNDEFINED;
+    }
+
     virtual const char *name() const override {
         return "Undefined (Error)";
     }
@@ -138,6 +151,10 @@ struct UndefinedStatement : public Statement {
 struct BlockStatement : public Statement {
     Buf<Statement*> block;
 
+    BlockStatement() {
+        kind = STMT::BLOCK;
+    }
+
     const char *name() const override {
         return "Block (Statement)";
     }
@@ -153,6 +170,10 @@ struct BlockStatement : public Statement {
 struct AssignmentStatement : public Statement {
     const char *id;
     Expression *rhs;
+
+    AssignmentStatement() {
+        kind = STMT::ASGN;
+    }
 
     const char *name() const override {
         return "AssignmentStatement";
@@ -171,6 +192,10 @@ struct ArrayAssignmentStatement : public Statement {
     Expression *index;
     Expression *rhs;
 
+    ArrayAssignmentStatement() {
+        kind = STMT::ARR_ASGN;
+    }
+
     const char *name() const override {
         return "ArrayAssignmentStatement";
     }
@@ -186,6 +211,10 @@ struct ArrayAssignmentStatement : public Statement {
 struct IfStatement : public Statement {
     Expression *cond;
     Statement *then, *else_;
+
+    IfStatement() {
+        kind = STMT::IF;
+    }
 
     const char *name() const override {
         return "IfStatement";
@@ -203,6 +232,10 @@ struct WhileStatement : public Statement {
     Expression *cond;
     Statement *body;
 
+    WhileStatement() {
+        kind = STMT::WHILE;
+    }
+
     const char *name() const override {
         return "WhileStatement";
     }
@@ -217,6 +250,10 @@ struct WhileStatement : public Statement {
 
 struct PrintStatement : public Statement {
     Expression *to_print;
+
+    PrintStatement() {
+        kind = STMT::WHILE;
+    }
 
     const char *name() const override {
         return "PrintStatement";
