@@ -1,0 +1,7 @@
+%class.A = type { i8 (...)** }
+
+define i32 A__foo() {
+entry:
+    ret i32 3
+}
+

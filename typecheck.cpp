@@ -976,10 +976,10 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         
         if (do_branching) {
             llvm_branch(and_lbls.end);
-
             llvm_gen_lbl(and_lbls.end);
-            __expr_context.llval = llvm_and_phi(origin_lbl,
-                                                __expr_context.llval, save_curr_lbl);
+            __expr_context.llval = llvm_phi_node(this->type_table.bool_type,
+                                                 {LLVALUE::CONST, 0}, __expr_context.llval,
+                                                 origin_lbl, save_curr_lbl);
         } /* else {
             `__expr_context.llval` has the value generated
             when type-checking to receive `ret_ty`.
@@ -1541,16 +1541,9 @@ void MainTypeCheckVisitor::visit(IfStatement *if_stmt) {
             // always go to either one of the 2.
             llvalue_t if_value = if_buf[i].llval;
             llvalue_t else_value = else_buf[i].llval;
-            llvalue_t new_val;
-            new_val.kind = LLVALUE::REG;
-            new_val.reg = gen_reg();
-            emit("    %%%ld = phi ", new_val.reg);
-            cgen_print_lltype(local->type);
-            emit(" [ ");
-            cgen_print_llvalue(if_value);
-            emit(", %s ], [ ", save_last_lbl_in_if.lbl);
-            cgen_print_llvalue(else_value);
-            emit(", %s ]\n", save_last_lbl_in_else.lbl);
+            llvalue_t new_val = llvm_phi_node(local->type, if_value, else_value,
+                                              save_last_lbl_in_if,
+                                              save_last_lbl_in_else);
             // Save the new val for the local
             local->llval = new_val;
             // Pass on the previous nesting level. If we have an assignment
@@ -1577,16 +1570,26 @@ struct WhileAssign {
     unsigned int used : 2;
 };
 
-struct WhileContext {
-    FuncArr<WhileAssign> track_buf;
-    llvm_label_t pred_lbl, loop_lbl;
-};
+// track_while_assignment_for_stmt() and track_while_assignment_for_expr()
+// track assignments and usage of locals for while loops for statements
+// and expressions respectively.
+// There are 3 cases where we can see a local:
+// 1) IdExpression
+// 2) AssignmentStatement
+// 1) ArrayAssignmentStatement
+// For each of the 3, we get the id and we loop over the track_buf
+// to see if it is a local in the buffer. If so, we track usage and assignment
+// by enforcing an ordering. For example, an IdExpression denotes a usage (while
+// the other 2 an assignment). For a usage, if we have already seen another usage,
+// we do nothing. If not and we have also not seen an assignment, we save 1.
+// Otherwise, we save 2 (assuming that `assigned` is 1).
+// That 1 and 2 tracks what appears first.
 
-bool test_expr(Expression *expr, WhileContext *whctx) {
+bool track_while_assignment_for_expr(Expression *expr, FuncArr<WhileAssign> track_buf) {
     switch (expr->kind) {
     case EXPR::ID:
     {
-        for (WhileAssign& wa : whctx->track_buf) {
+        for (WhileAssign& wa : track_buf) {
             Local *local = wa.local;
             if (expr->id == local->id) {
                 if (!wa.used) {
@@ -1596,6 +1599,7 @@ bool test_expr(Expression *expr, WhileContext *whctx) {
                         wa.used = 2;
                     }
                 }
+                break;
             }
         }
     } break;
@@ -1603,7 +1607,7 @@ bool test_expr(Expression *expr, WhileContext *whctx) {
     case EXPR::ARR_LEN:
     case EXPR::NOT:
     {
-        test_expr(expr->e1, whctx);
+        track_while_assignment_for_expr(expr->e1, track_buf);
     } break;
     case EXPR::AND:
     case EXPR::CMP:
@@ -1613,15 +1617,15 @@ bool test_expr(Expression *expr, WhileContext *whctx) {
     case EXPR::ARR_LOOK:
     {
         BinaryExpression *be = (BinaryExpression *) expr;
-        test_expr(be->e1, whctx);
-        test_expr(be->e2, whctx);
+        track_while_assignment_for_expr(be->e1, track_buf);
+        track_while_assignment_for_expr(be->e2, track_buf);
     } break;
     case EXPR::MSG_SEND:
     {
         BinaryExpression *be = (BinaryExpression *) expr;
-        test_expr(be->e1, whctx);
+        track_while_assignment_for_expr(be->e1, track_buf);
         for (Expression *e : be->msd->expr_list) {
-            test_expr(e, whctx);
+            track_while_assignment_for_expr(e, track_buf);
         }
     } break;
     default: break;
@@ -1629,7 +1633,7 @@ bool test_expr(Expression *expr, WhileContext *whctx) {
     return false;
 }
 
-bool test(Statement *stmt, Method *method, WhileContext *whctx) {
+bool track_while_assignment_for_stmt(Statement *stmt, FuncArr<WhileAssign> track_buf) {
     // IMPORTANT: Be sure to first visit the usage, then
     // the assignment in assigments. For example, in
     // AssignmentStatement, we first want to visit the RHS,
@@ -1642,14 +1646,14 @@ bool test(Statement *stmt, Method *method, WhileContext *whctx) {
     {
         BlockStatement *block = (BlockStatement *)stmt;
         for (Statement *s : block->block) {
-            test(s, method, whctx);
+            track_while_assignment_for_stmt(s, track_buf);
         }
     } break;
     case STMT::ASGN:
     {
         AssignmentStatement *asgn = (AssignmentStatement *)stmt;
-        test_expr(asgn->rhs, whctx);
-        for (WhileAssign& wa : whctx->track_buf) {
+        track_while_assignment_for_expr(asgn->rhs, track_buf);
+        for (WhileAssign& wa : track_buf) {
             Local *local = wa.local;
             if (asgn->id == local->id) {
                 if (!wa.assigned) {
@@ -1659,16 +1663,17 @@ bool test(Statement *stmt, Method *method, WhileContext *whctx) {
                         wa.assigned = 2;
                     }
                 }
+                break;
             }
         }
     } break;
     case STMT::ARR_ASGN:
     {
         ArrayAssignmentStatement *arr_asgn = (ArrayAssignmentStatement *)stmt;
-        test_expr(arr_asgn->index, whctx);
-        test_expr(arr_asgn->rhs, whctx);
+        track_while_assignment_for_expr(arr_asgn->index, track_buf);
+        track_while_assignment_for_expr(arr_asgn->rhs, track_buf);
 
-        for (WhileAssign& wa : whctx->track_buf) {
+        for (WhileAssign& wa : track_buf) {
             Local *local = wa.local;
             if (arr_asgn->id == local->id) {
                 if (!wa.assigned) {
@@ -1678,26 +1683,27 @@ bool test(Statement *stmt, Method *method, WhileContext *whctx) {
                         wa.assigned = 2;
                     }
                 }
+                break;
             }
         }
     } break;
     case STMT::IF:
     {
         IfStatement *if_stmt = (IfStatement *)stmt;
-        test_expr(if_stmt->cond, whctx);
-        test(if_stmt->then, method, whctx);
-        test(if_stmt->else_, method, whctx);
+        track_while_assignment_for_expr(if_stmt->cond, track_buf);
+        track_while_assignment_for_stmt(if_stmt->then, track_buf);
+        track_while_assignment_for_stmt(if_stmt->else_, track_buf);
     } break;
     case STMT::WHILE:
     {
         WhileStatement *while_stmt = (WhileStatement *)stmt;
-        test_expr(while_stmt->cond, whctx);
-        test(while_stmt->body, method, whctx);
+        track_while_assignment_for_expr(while_stmt->cond, track_buf);
+        track_while_assignment_for_stmt(while_stmt->body, track_buf);
     } break;
     case STMT::PRINT:
     {
         PrintStatement *print_stmt = (PrintStatement *)stmt;
-        test_expr(print_stmt->to_print, whctx);
+        track_while_assignment_for_expr(print_stmt->to_print, track_buf);
     } break;
     }
     return false;
@@ -1706,78 +1712,54 @@ bool test(Statement *stmt, Method *method, WhileContext *whctx) {
 llvalue_t while_phi_node(Type *type, llvalue_t prev_value,
                     llvalue_t new_value, llvm_label_t pred_lbl,
                     llvm_label_t loop_lbl, long reg) {
-    llvalue_t phi_value;
-    phi_value.kind = LLVALUE::REG;
-    phi_value.reg = reg;
-    emit("    %%%ld = phi ", phi_value.reg);
-    cgen_print_lltype(type);
-    emit(" [ ");
-    cgen_print_llvalue(prev_value);
-    emit(", %s ], [ ", pred_lbl.lbl);
-    cgen_print_llvalue(new_value);
-    emit(", %s ]\n", loop_lbl.lbl);
-    return phi_value;
+    return llvm_phi_node(type, prev_value, new_value, pred_lbl, loop_lbl, reg);
+}
+
+FuncArr<WhileAssign> get_track_buf(SerializedHashTable<Local*> locals) {
+    FuncArr<WhileAssign> track_buf(locals.len);
+    size_t i = 0;
+    for (Local *lo : locals) {
+        // Initialize its entry with its local and dumb
+        // values for `assigned` and `used` (they will be overriden).
+        track_buf.push({lo, 0, 0});
+        ++i;
+    }
+    return track_buf;
 }
 
 void MainTypeCheckVisitor::visit(WhileStatement *while_stmt) {
     LOG_SCOPE;
     debug_print("MainTypeCheck::WhileStatement\n");
     Type *cond = while_stmt->cond->accept(this);
+    llvalue_t cond_val = __expr_context.llval;
     if (cond != this->type_table.bool_type) {
         typecheck_error(while_stmt->loc, "In while statement, the ",
                         "condition expression must have `boolean` type but has: `",
                         cond->name(), "`");
     }
-    
-    /// Codegen ///
-    
-    /*
-    -- while loop transformation --
-    The logical way to generate loops is:
-    cond_label:
-        condition test code (branch after_loop if false otherwise to body_label)
-    body_label:
-        body code
-        branch loop_label
-    after_loop:
-
-    While this is ok generally, it doesn't let us do an important optimization
-    that will be described next. Think that for this optimization, we need to know
-    whether we went to the loop body from:
-      - the loop body itself.
-      - the predecessor of the loop (i.e. this is the first iteration)
-
-    So, we transform the loops to:
-        cond code (branch to loop or after)
-    loop_label:
-        body_code
-        cond_code (again)
-    after_loop:
-    */
-
-
-    llvalue_t cond_val = __expr_context.llval;
 
     if (cond_val.kind == LLVALUE::CONST && cond_val.val == 0) {
         // Elide while body because of constant false condition.
         // Assume that the user does not even wants to typecheck it.
         return;
     }
-
-
-    // 1) No assignment to the local.
-    // 2) We have at least one assignment and we have a use _after_ the _first_ assignment.
-    // 3) We have at least one assignment and we have a use _before_ the _first_ assignment.
-
-    Method *method = __expr_context.method;
     
-    FuncArr<WhileAssign> track_buf(method->locals.len);
-    size_t i = 0;
-    for (Local *lo : method->locals) {
-        track_buf.push({lo, 0, 0});
-        ++i;
-    }
+    /// Codegen ///
 
+    // Codegen loops as:
+    /*
+    predecessor:
+        cond test code (branch to loop start or after_loop)
+    loop_start:
+        loop_body
+        cond test code (again, branch to loop_start or after_loop)
+    after_loop:
+
+    That way, when we're in loop_body, we know whether we came from predecessor
+    or from loop_start.
+    Note: Here we have already generated the initial cond code when we
+    typechecked it.
+    */
 
     llvm_label_t pred_lbl = __expr_context.curr_lbl;
     llvm_label_t loop_lbl, after_loop_lbl;
@@ -1794,51 +1776,123 @@ void MainTypeCheckVisitor::visit(WhileStatement *while_stmt) {
     } else {
         llvm_branch(loop_lbl);
     }
-
     llvm_gen_lbl(loop_lbl);
 
-    WhileContext whctx = { track_buf, pred_lbl, loop_lbl };
+    // There are 3 cases for a local inside a loop:
+    // 1) No assignment to the local.
+    // 2) We have at least one assignment and we have a use _after_ the _first_ assignment.
+    // 3) We have at least one assignment and we have a use _before_ the _first_ assignment.
 
-    // Check first the body and then the cond,
+    // We want to insert a phi node for locals in case 3. To do that, we use the `track_buf`.
+    // This keeps an `assigned` and `used` for every local. We then "visit" the whole
+    // loop body and condition to track in what case we are. To do that, we use
+    // an ordering in `assigned` and `used`. After finishing, either they're both
+    // 0, or one is bigger than the other denoting the order.
+
+    SerializedHashTable<Local*> locals = __expr_context.method->locals;
+    FuncArr<WhileAssign> track_buf = get_track_buf(locals);
+
+    // Track first the body and then the cond,
     // as the condition will be put on the bottom.
-    test(while_stmt->body, method, &whctx);
-    test_expr(while_stmt->cond, &whctx);
+    track_while_assignment_for_stmt(while_stmt->body, track_buf);
+    track_while_assignment_for_expr(while_stmt->cond, track_buf);
+
+    /* -- Main algorithm for insert phi nodes --
+
+    Assuming that we have an ordering now, we need to handle case 3) (from above)
+    locals. For those we will insert a phi node at the start of the loop
+    that decides between the previous value (the value before the loop) and
+    the value inside the loop. Let's note some problems:
+    1) We have to know the value inside the loop _before_ we actually generate
+       the loop. This is kind of impossible so there are 2 ways:
+       a) Generate the loop (say into a buffer), then read this IR, find the values
+          and then regenerate the loop with the suitable phi nodes on the start.
+       b) Generate the loop (but by disabling actual codegen, i.e. printing), find
+          the values, generate the phi nodes and then regenerate the loop as it was
+          never generated.
+       We will do b) as it is of course way easier and faster. But that comes later.
+       Before that we have to solve another problem:
+    2) To do the first fake generation that was described 1b) above, we have to know
+       the register that was assigned to the phi node, _before_ we can generate
+       the phi node.
+    
+    To see both 1) and 2) into action, consider this:
+        
+       ```
+       a = 3;
+       while (a < 4) {
+          a = a + 1;
+       }
+       ```
+        
+       That has to generate something like this:
+       ```
+           // ... (`a` has gotten constant value 3 here)
+       while1:
+           %1 = phi i32 [ 3, entry ], [ %2, while1 ]
+           %2 = add i32 %1, 1
+           %3 = icmp slt i32 %2, 4
+           br i1 %3, label while1, label while_end1
+       
+       while_end1:
+           // ...
+       ```
+
+       Note that to generate the phi node in %1, we have to know that `a`
+       gets the llvalue %2. But, we can't know that _before_ we generate the body.
+       So, let's say that we go to generate it. Well, to generate it, when we
+       go to generate code for %2, we have to know that `a` has the llvalue %1.
+       If we _don't_ somehow do that and do the generation normally, then when we
+       generate code for %2, the value that will be assigned to `a` will be the
+       constant value 3. And that's of course wrong code generation.
+
+       To solve that we decide the register in which we will save the phi node
+       before we actually. Because of the ordering (which remember, comes before all that),
+       we know e.g. that we have to generate a phi node for `a`. At this point we can't
+       generate the phi node, but we can decide that its value will be saved e.g. in %1.
+       Then, we save the llvalue of `a` to be %1 (e.g. local->llval = ...). In that way,
+       when we do the first fake generation of, when we go to generate %2, it uses %1
+       as the llvalue of `a`. Then of course `a` gets as llvalue the %2.
+       And _now_, after finishing the fake generation, we know that `a` got assigned
+       as llvalue the %2. And so, we generate the phi node between the constant value
+       3 (the previous value i.e. that before the loop) and %2 (the new value).
+
+       Ok, to do all that we need 2 buffers:
+       1) `previous_values` holds the values of the locals _before_ the loop.
+       2) `new_assigned_values` holds the values that we assign a priori to the phi
+          nodes that _will_ be generated.
+    */
 
     FuncArr<llvalue_t> previous_values, new_assigned_values;
-    previous_values.reserve(method->locals.len);
-    new_assigned_values.reserve(method->locals.len);
-
-    i = 0;
-    for (Local *local : method->locals) {
+    previous_values.reserve(locals.len);
+    new_assigned_values.reserve(locals.len);
+    // Initialize the 2 buffers.
+    for (Local *local : locals) {
         previous_values.push(local->llval);
         // DUMB VALUE
         new_assigned_values.push({LLVALUE::CONST, 0});
-        ++i;
     }
 
-    i = 0;
-    for (WhileAssign wa : whctx.track_buf) {
-        assert(i < method->locals.len);
+    /// Decide for which locals we have to make a phi node
+    /// and get a register for the phi node (that will be generated later).
+    size_t i = 0;
+    for (WhileAssign wa : track_buf) {
+        assert(i < locals.len);
         // Either no use and no assignment or they are not equal (since
         // we should have ordering).
         assert((!wa.assigned && !wa.used) || (wa.used != wa.assigned));
-        if (!wa.assigned) {
-            //log("--- No assignment for: ", wa.local->id, "\n");
-        } else {
-            if (wa.used) {
-                if (wa.used > wa.assigned) {
-                    //log("--- Use after assignment for: ", wa.local->id, "\n");
-                } else {
-                    Local *local = method->locals[i];
-                    new_assigned_values[i].kind = LLVALUE::REG;
-                    new_assigned_values[i].reg = gen_reg();
-                    local->llval = new_assigned_values[i];
-                    //log("--- Use before assignment for: ", wa.local->id, "\n");
-                }
-            }
+        if (wa.assigned && wa.used && wa.used < wa.assigned) {
+            Local *local = locals[i];
+            new_assigned_values[i].kind = LLVALUE::REG;
+            new_assigned_values[i].reg = gen_reg();
+            local->llval = new_assigned_values[i];
         }
         ++i;
     }
+
+    /// Do the fake generation (by disabling codegen).
+    /// That requires some boilterplate to save and restore the state of registers
+    /// and labels.
 
     assert(while_stmt->body);
     bool save_codegen = config.codegen;
@@ -1854,70 +1908,48 @@ void MainTypeCheckVisitor::visit(WhileStatement *while_stmt) {
     set_reg(save_reg);
     set_lbl(save_lbl);
     config.codegen = save_codegen;
-
-
+    
+    /// Now that we know the llvalue that the locals got in the loop,
+    /// generate the phi nodes. Note that they're locals that might have been
+    /// assigned but either never used or used after the assignment. In these
+    /// cases we don't want to insert a phi node but we do want to restore their
+    /// llvalue so that the actual code generation is correct.
     i = 0;
-    for (WhileAssign wa : whctx.track_buf) {
-        Local *local = method->locals[i];
-        assert(i < method->locals.len);
-        // Either no use and no assignment or they are not equal (since
-        // we should have ordering).
-        assert((!wa.assigned && !wa.used) || (wa.used != wa.assigned));
-        bool insert_phi = false;
-        if (!wa.assigned) {
-            //log("--- No assignment for: ", wa.local->id, "\n");
-        } else {
-            if (wa.used) {
-                if (wa.used > wa.assigned) {
-                    //log("--- Use after assignment for: ", wa.local->id, "\n");
-                } else {
-                    insert_phi = true;
-                    //log("--- Use before assignment for: ", wa.local->id, "\n");
-                }
-            }
-        }
-        if (insert_phi) {
+    for (WhileAssign wa : track_buf) {
+        Local *local = wa.local;
+        if (wa.assigned && wa.used && wa.used < wa.assigned) {
             long reg = new_assigned_values[i].reg;
             local->llval = while_phi_node(local->type, previous_values[i], local->llval,
                                           pred_lbl, last_lbl, reg);
-        } else {
+        } else if (wa.assigned) {
             // Restore in the general case
             local->llval = previous_values[i];
         }
         ++i;
     }
     
+    /// Do the actual code generation (note that we generate the cond on the
+    /// bottom etc. - as described above on how while loops are generated / transformed).
     while_stmt->body->accept(this);
     while_stmt->cond->accept(this);
     cond_val = __expr_context.llval;
     llvm_branch_cond(cond_val, loop_lbl, after_loop_lbl);
     llvm_gen_lbl(after_loop_lbl);
+    
+    /// Last but not least, we want to generate a phi nodes for all
+    /// the locals that were assigned inside the loop (regardless of the usage).
+    /// Of course the phi will be between their before-loop-llvalue and the
+    /// value they get assigned inside the loop.
 
     // Generate a phi node after the while
     i = 0;
-    for (WhileAssign wa : whctx.track_buf) {
-        Local *local = method->locals[i];
-        assert(i < method->locals.len);
-        // Either no use and no assignment or they are not equal (since
-        // we should have ordering).
-        assert((!wa.assigned && !wa.used) || (wa.used != wa.assigned));
-        bool insert_phi = false;
-        if (!wa.assigned) {
-            //log("--- No assignment for: ", wa.local->id, "\n");
-        } else {
-            if (wa.used) {
-                if (wa.used > wa.assigned) {
-                    //log("--- Use after assignment for: ", wa.local->id, "\n");
-                } else {
-                    insert_phi = true;
-                    //log("--- Use before assignment for: ", wa.local->id, "\n");
-                }
-            }
-        }
-        if (insert_phi) {
-            long reg = gen_reg();
-            local->llval = while_phi_node(local->type, previous_values[i], local->llval,
-                                          pred_lbl, last_lbl, reg);
+    for (WhileAssign wa : track_buf) {
+        Local *local = wa.local;
+        llvalue_t prev_value = previous_values[i];
+        llvalue_t new_value = local->llval;
+        if (wa.assigned) {
+            local->llval = llvm_phi_node(local->type, prev_value, new_value,
+                                         pred_lbl, last_lbl);
         }
         ++i;
     }

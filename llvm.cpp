@@ -329,17 +329,25 @@ void llvm_branch(llvm_label_t l) {
     emit("br %s\n\n", l.lbl);
 }
 
-llvalue_t llvm_and_phi(llvm_label_t l1, llvalue_t v1, llvm_label_t l2) {
-    llvalue_t v;
-    v.kind = LLVALUE::REG;
-    v.reg = gen_reg();
-    // We only need boolean values
-    assert(v1.kind == LLVALUE::REG || (v1.val == 0 || v1.val == 1));
+llvalue_t llvm_phi_node(Type *type, llvalue_t val1,
+                    llvalue_t val2, llvm_label_t lbl1,
+                    llvm_label_t lbl2, long reg) {
+    llvalue_t phi_value;
+    phi_value.kind = LLVALUE::REG;
+    if (reg == -1) {
+        phi_value.reg = gen_reg();
+    } else {
+        phi_value.reg = reg;
+    }
     print_codegen_indentation();
-    emit("%%%ld = phi i1 [ false, %s ], [ ", v.reg, l1.lbl);
-    cgen_print_llvalue(v1);
-    emit(", %s]\n", l2.lbl);
-    return v;
+    emit("%%%ld = phi ", phi_value.reg);
+    cgen_print_lltype(type);
+    emit(" [ ");
+    cgen_print_llvalue(val1);
+    emit(", %s ], [ ", lbl1.lbl);
+    cgen_print_llvalue(val2);
+    emit(", %s ]\n", lbl2.lbl);
+    return phi_value;
 }
 
 llvalue_t llvm_call(Type *ret_type, Type *base_obj_ty, llvalue_t base_obj,
@@ -471,13 +479,8 @@ void cgen_start_method(Method *method, const char *class_name) {
         Local *local = method->locals[var_counter];
         local->kind = (int)LOCAL_KIND::VAR;
         local->index = var_counter;
-        /*
-        llvalue_t allocated_mem = llvm_alloca(local->type);
-        local->llval = allocated_mem;
-        // Locals are initially not initialed. We have allocated
-        // memory for them with `alloca`.
-        local->initialized = false;
-        */
+        // Initialize all the values to 0.
+        local->llval = {LLVALUE::CONST, 0};
     }
 
     llvm_label_t entry_lbl = llvm_label_t("entry");

@@ -35,6 +35,7 @@ if_end2:
 
 while_end1:
     %5 = phi i32 [ %1, entry ], [ %4, if_end2 ]
+    %6 = phi i32 [ 0, entry ], [ %3, if_end2 ]
     ret i32 1
 }
 

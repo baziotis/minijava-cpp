@@ -12,3 +12,8 @@ entry:
     ret i32 2
 }
 
+define i32 A__fa() {
+entry:
+    ret i32 3
+}
+

@@ -33,4 +33,16 @@ class A {
         }
         return 2;
     }
+
+    public int fa() {
+        int a;
+        a = 1;
+        // True constant condition
+        if (1 < 2) {
+            a = 3;
+        } else {  // This should be completely elided
+            a = 4;
+        }
+        return a;
+    }
 }

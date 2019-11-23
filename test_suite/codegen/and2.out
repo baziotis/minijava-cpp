@@ -11,7 +11,7 @@ and1:
     br and_end1
 
 and_end1:
-    %5 = phi i1 [ false, entry ], [ 1, and1]
+    %5 = phi i1 [ 0, entry ], [ 1, and1 ]
     ret i1 %5
 }
 
