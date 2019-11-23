@@ -9,6 +9,8 @@ class A {
     }
 
     public int foo() {
+        // Constant propagating `a` and
+        // then constant folding 3 + 2;
         int a;
         int b;
         a = 2;

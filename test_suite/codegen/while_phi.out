@@ -1,0 +1,40 @@
+%class.A = type { i8 (...)** }
+
+define i32 A__foo() {
+entry:
+    br while1
+
+while1:
+    %1 = phi i32 [ 3, entry ], [ %2, while1 ]
+    %2 = add i32 %1, 1
+    %3 = icmp slt i32 %2, 4
+    br i1 %3, label while1, label while_end1
+
+while_end1:
+    %4 = phi i32 [ 3, entry ], [ %2, while1 ]
+    ret i32 1
+}
+
+define i32 A__bar(i32 %1, i1 %2) {
+entry:
+    br i1 %2, label while1, label while_end1
+
+while1:
+    %3 = phi i32 [ %1, entry ], [ %4, if_end2 ]
+    br i1 %2, label if2, label else2
+
+if2:
+    br if_end2
+
+else2:
+    br if_end2
+
+if_end2:
+    %4 = phi i32 [ 2, if2 ], [ %3, else2 ]
+    br i1 %2, label while1, label while_end1
+
+while_end1:
+    %5 = phi i32 [ %1, entry ], [ %4, if_end2 ]
+    ret i32 1
+}
+

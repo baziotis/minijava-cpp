@@ -1,19 +1,12 @@
 %class.A = type { i8 (...)** }
 
 define %class.A* A__foo() {
-    %1 = alloca %class.A*, align 8
-    %2 = alloca i32*, align 8
-    %3 = alloca i32, align 4
 entry:
-    %4 = call noalias i8* @calloc(i32 1, i32 8)
-    %5 = bitcast i8* %4 to %class.A*
-    store %class.A* %5, %class.A** %1
-    %6 = load %class.A*, %class.A** %1, align 8
-    %7 = call noalias i8* @calloc(i32 1, i32 60)
-    %8 = bitcast i8* %7 to i32*
-    store i32 14, i32* %8
-    store i32* %8, i32** %2
-    %9 = load i32*, i32** %2, align 8
-    ret %class.A* %6
+    %1 = call noalias i8* @calloc(i32 1, i32 8)
+    %2 = bitcast i8* %1 to %class.A*
+    %3 = call noalias i8* @calloc(i32 1, i32 60)
+    %4 = bitcast i8* %3 to i32*
+    store i32 14, i32* %4
+    ret %class.A* %2
 }
 

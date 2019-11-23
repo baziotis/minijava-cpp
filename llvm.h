@@ -83,6 +83,7 @@ void cgen_print_lltype(Type *type);
 long gen_reg();
 void set_reg(ssize_t v);
 void reset_lbl();
+void set_lbl(long _lbl);
 void emit(const char *fmt, ...);
 llvalue_t llvm_op_const(int op, int val1, int val2);
 llvalue_t llvm_op(int op, llvalue_t res1, llvalue_t res2);

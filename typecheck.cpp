@@ -411,8 +411,6 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
                             "`, redefinition of field with id: `", field->id, "`");
         } else {
             field = ld->accept(this);
-            // All fields are considered initialized.
-            field->initialized = true;
             field->kind = (int)LOCAL_KIND::FIELD;
             type->fields.insert(field->id, field);
             /// Codegen ///
@@ -729,17 +727,10 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         assert(this->curr_method);
         assert(this->curr_class);
         Local *local = lookup_local(expr->id, this->curr_method, this->curr_class);
-
         if (!local) {
             typecheck_error(expr->loc, "In identifier expression, Identifier: `",
                             expr->id, "` does is not defined.");
             return this->type_table.undefined_type;
-        } else if (!local->initialized) {
-            // Only variables can remain uninitialized. Check
-            // TypeDeclaration and MethodDeclaration in DeclarationVisitor.
-            // TODO - IMPORTANT: This does not consider all possible paths.
-            typecheck_error(expr->loc, "Variable: `",
-                            expr->id, "` might have not been initialized.");
         }
 
         /// Codegen ///
@@ -1085,6 +1076,9 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
                             " is out of bounds (negative)");
         }
 
+        if (ptr.kind != LLVALUE::REG) {
+            return this->type_table.int_type;
+        }
         /// Codegen ///
 
         // Check if index < len
@@ -1212,7 +1206,6 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
                         lhs->type->name(), "`");
     }
     if (!is_correct) {
-        lhs->initialized = true;
         return;
     }
     /// Codegen ///
@@ -1220,13 +1213,6 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
     llvalue_t ptr;
     if (lhs->kind == (int)LOCAL_KIND::FIELD) {
         ptr = cgen_get_field_ptr(lhs);
-    } else {
-        // This `ptr` will be used only if
-        // `lhs` is not initialized.
-        // Assume that if it's not initialized,
-        // the current assigned `llval` is a pointer.
-        // The pointer we got from `alloca`.
-        ptr = lhs->llval;
     }
     // If it is an array, save the length in the
     // first 4 bytes (i.e. its first element).
@@ -1244,22 +1230,9 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
     if (lhs->type != rhs_type) {
         rhs_val = cgen_cast_value(rhs_val , rhs_type, lhs->type);
     }
-    // Store the value: Handle fields, unitialized locals
-    // and initialized locals separately.
+    // Store the value: Handle fields separately.
     if (lhs->kind == (int)LOCAL_KIND::FIELD) {
         llvm_store(lhs->type, rhs_val, ptr);
-    } else if (!lhs->initialized && rhs_val.kind != LLVALUE::CONST) {
-        // TODO:
-        // This whole `store` and alloca at the start of the function
-        // can just be eliminated. Just use the llvalue that you have
-        // (i.e. if you have a = b, and `b` is not constant, use the llvalue
-        // of `b` as the new llval for `a`. If it is, then again use its llval
-        // for `a`).
-        llvm_store(lhs->type, rhs_val, ptr);
-        // Load it so we have it in a register.
-        // TODO: Should we postpone this until we have an actual use?
-        llvalue_t loaded = llvm_load(lhs->type, ptr);
-        lhs->llval = loaded;
     } else {
         // Just set `rhs_val` as the new llvalue.
         lhs->llval = rhs_val;
@@ -1276,7 +1249,6 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
         }
     }
     /// End of Codegen ///
-    lhs->initialized = true;
 }
 
 void MainTypeCheckVisitor::visit(ArrayAssignmentStatement *arr_asgn_stmt) {
@@ -1290,11 +1262,6 @@ void MainTypeCheckVisitor::visit(ArrayAssignmentStatement *arr_asgn_stmt) {
         typecheck_error(arr_asgn_stmt->loc, "In array assignment statement, array: `",
                         arr_asgn_stmt->id, "` is not defined");
         is_correct = false;
-    }
-    if (!arr->initialized) {
-        // TODO - IMPORTANT: This does not consider all possible paths.
-        typecheck_error(arr_asgn_stmt->loc, "In array assignment statement, array: `",
-                        arr_asgn_stmt->id, "` has not been initialized.");
     }
     assert(arr_asgn_stmt->index);
     Type *index_type = arr_asgn_stmt->index->accept(this);
@@ -1315,7 +1282,6 @@ void MainTypeCheckVisitor::visit(ArrayAssignmentStatement *arr_asgn_stmt) {
         is_correct = false;
     }
     if (!is_correct) {
-        arr->initialized = true;
         return;
     }
     /// Codegen ///
@@ -1323,8 +1289,8 @@ void MainTypeCheckVisitor::visit(ArrayAssignmentStatement *arr_asgn_stmt) {
     llvalue_t ptr;
     if (arr->kind == (int)LOCAL_KIND::FIELD) {
         ptr = cgen_get_field_ptr(arr);
+        ptr = llvm_load(this->type_table.int_arr_type, ptr);
     } else {
-        assert(arr->initialized);  // from above
         ptr = arr->llval;
     }
     // Store the value (by taking into consideration
@@ -1338,7 +1304,6 @@ void MainTypeCheckVisitor::visit(ArrayAssignmentStatement *arr_asgn_stmt) {
     assert(rhs_type == this->type_table.int_type);
     llvm_store(rhs_type, rhs_val, ptr);
     /// End of Codegen ///
-    arr->initialized = true;
 }
 
 void MainTypeCheckVisitor::visit(IfStatement *if_stmt) {
@@ -1380,11 +1345,13 @@ void MainTypeCheckVisitor::visit(IfStatement *if_stmt) {
     end_lbl.construct("if_end", lbl);
     
     // Emit a comparison and branch
+    /*
     llvalue_t cmp_res;
     cmp_res.kind = LLVALUE::REG;
     cmp_res.reg = gen_reg();
     emit("    %%%ld = icmp eq i1 %%%ld, 1\n", cmp_res.reg, cond.reg);
-    llvm_branch_cond(cmp_res, if_lbl, else_lbl);
+    */
+    llvm_branch_cond(cond, if_lbl, else_lbl);
 
     /*
     //// Algorithm for emission of phi nodes ////
@@ -1604,6 +1571,154 @@ void MainTypeCheckVisitor::visit(IfStatement *if_stmt) {
     __expr_context.nesting_level -= 1;
 }
 
+struct WhileAssign {
+    Local *local;
+    unsigned int assigned : 2;
+    unsigned int used : 2;
+};
+
+struct WhileContext {
+    FuncArr<WhileAssign> track_buf;
+    llvm_label_t pred_lbl, loop_lbl;
+};
+
+bool test_expr(Expression *expr, WhileContext *whctx) {
+    switch (expr->kind) {
+    case EXPR::ID:
+    {
+        for (WhileAssign& wa : whctx->track_buf) {
+            Local *local = wa.local;
+            if (expr->id == local->id) {
+                if (!wa.used) {
+                    if (!wa.assigned) {
+                        wa.used = 1;
+                    } else {
+                        wa.used = 2;
+                    }
+                }
+            }
+        }
+    } break;
+    case EXPR::ARR_ALLOC:
+    case EXPR::ARR_LEN:
+    case EXPR::NOT:
+    {
+        test_expr(expr->e1, whctx);
+    } break;
+    case EXPR::AND:
+    case EXPR::CMP:
+    case EXPR::PLUS:
+    case EXPR::MINUS:
+    case EXPR::TIMES:
+    case EXPR::ARR_LOOK:
+    {
+        BinaryExpression *be = (BinaryExpression *) expr;
+        test_expr(be->e1, whctx);
+        test_expr(be->e2, whctx);
+    } break;
+    case EXPR::MSG_SEND:
+    {
+        BinaryExpression *be = (BinaryExpression *) expr;
+        test_expr(be->e1, whctx);
+        for (Expression *e : be->msd->expr_list) {
+            test_expr(e, whctx);
+        }
+    } break;
+    default: break;
+    }
+    return false;
+}
+
+bool test(Statement *stmt, Method *method, WhileContext *whctx) {
+    // IMPORTANT: Be sure to first visit the usage, then
+    // the assignment in assigments. For example, in
+    // AssignmentStatement, we first want to visit the RHS,
+    // then track the assignment because if we have say:
+    // a = a + 1;
+    // then, it counts as a usage before an assignment.
+    switch (stmt->kind) {
+    case STMT::UNDEFINED: assert(0);
+    case STMT::BLOCK:
+    {
+        BlockStatement *block = (BlockStatement *)stmt;
+        for (Statement *s : block->block) {
+            test(s, method, whctx);
+        }
+    } break;
+    case STMT::ASGN:
+    {
+        AssignmentStatement *asgn = (AssignmentStatement *)stmt;
+        test_expr(asgn->rhs, whctx);
+        for (WhileAssign& wa : whctx->track_buf) {
+            Local *local = wa.local;
+            if (asgn->id == local->id) {
+                if (!wa.assigned) {
+                    if (!wa.used) {
+                        wa.assigned = 1;
+                    } else {
+                        wa.assigned = 2;
+                    }
+                }
+            }
+        }
+    } break;
+    case STMT::ARR_ASGN:
+    {
+        ArrayAssignmentStatement *arr_asgn = (ArrayAssignmentStatement *)stmt;
+        test_expr(arr_asgn->index, whctx);
+        test_expr(arr_asgn->rhs, whctx);
+
+        for (WhileAssign& wa : whctx->track_buf) {
+            Local *local = wa.local;
+            if (arr_asgn->id == local->id) {
+                if (!wa.assigned) {
+                    if (!wa.used) {
+                        wa.assigned = 1;
+                    } else {
+                        wa.assigned = 2;
+                    }
+                }
+            }
+        }
+    } break;
+    case STMT::IF:
+    {
+        IfStatement *if_stmt = (IfStatement *)stmt;
+        test_expr(if_stmt->cond, whctx);
+        test(if_stmt->then, method, whctx);
+        test(if_stmt->else_, method, whctx);
+    } break;
+    case STMT::WHILE:
+    {
+        WhileStatement *while_stmt = (WhileStatement *)stmt;
+        test_expr(while_stmt->cond, whctx);
+        test(while_stmt->body, method, whctx);
+    } break;
+    case STMT::PRINT:
+    {
+        PrintStatement *print_stmt = (PrintStatement *)stmt;
+        test_expr(print_stmt->to_print, whctx);
+    } break;
+    }
+    return false;
+}
+
+llvalue_t while_phi_node(Type *type, llvalue_t prev_value,
+                    llvalue_t new_value, llvm_label_t pred_lbl,
+                    llvm_label_t loop_lbl, long reg) {
+    llvalue_t phi_value;
+    phi_value.kind = LLVALUE::REG;
+    phi_value.reg = reg;
+    emit("    %%%ld = phi ", phi_value.reg);
+    cgen_print_lltype(type);
+    emit(" [ ");
+    cgen_print_llvalue(prev_value);
+    emit(", %s ], [ ", pred_lbl.lbl);
+    cgen_print_llvalue(new_value);
+    emit(", %s ]\n", loop_lbl.lbl);
+    return phi_value;
+}
+
 void MainTypeCheckVisitor::visit(WhileStatement *while_stmt) {
     LOG_SCOPE;
     debug_print("MainTypeCheck::WhileStatement\n");
@@ -1613,8 +1728,199 @@ void MainTypeCheckVisitor::visit(WhileStatement *while_stmt) {
                         "condition expression must have `boolean` type but has: `",
                         cond->name(), "`");
     }
+    
+    /// Codegen ///
+    
+    /*
+    -- while loop transformation --
+    The logical way to generate loops is:
+    cond_label:
+        condition test code (branch after_loop if false otherwise to body_label)
+    body_label:
+        body code
+        branch loop_label
+    after_loop:
+
+    While this is ok generally, it doesn't let us do an important optimization
+    that will be described next. Think that for this optimization, we need to know
+    whether we went to the loop body from:
+      - the loop body itself.
+      - the predecessor of the loop (i.e. this is the first iteration)
+
+    So, we transform the loops to:
+        cond code (branch to loop or after)
+    loop_label:
+        body_code
+        cond_code (again)
+    after_loop:
+    */
+
+
+    llvalue_t cond_val = __expr_context.llval;
+
+    if (cond_val.kind == LLVALUE::CONST && cond_val.val == 0) {
+        // Elide while body because of constant false condition.
+        // Assume that the user does not even wants to typecheck it.
+        return;
+    }
+
+
+    // 1) No assignment to the local.
+    // 2) We have at least one assignment and we have a use _after_ the _first_ assignment.
+    // 3) We have at least one assignment and we have a use _before_ the _first_ assignment.
+
+    Method *method = __expr_context.method;
+    
+    FuncArr<WhileAssign> track_buf(method->locals.len);
+    size_t i = 0;
+    for (Local *lo : method->locals) {
+        track_buf.push({lo, 0, 0});
+        ++i;
+    }
+
+
+    llvm_label_t pred_lbl = __expr_context.curr_lbl;
+    llvm_label_t loop_lbl, after_loop_lbl;
+    long lbl = gen_lbl();
+    loop_lbl.construct("while", lbl);
+    after_loop_lbl.construct("while_end", lbl);
+    
+    // Note: We have already tested if the `cond_val` is const with
+    // false value. If we reach here and we have a const, then it's
+    // definitely true in which case we don't generate the branch, we
+    // just get to the loop.
+    if (cond_val.kind != LLVALUE::CONST) {
+        llvm_branch_cond(cond_val, loop_lbl, after_loop_lbl);
+    } else {
+        llvm_branch(loop_lbl);
+    }
+
+    llvm_gen_lbl(loop_lbl);
+
+    WhileContext whctx = { track_buf, pred_lbl, loop_lbl };
+
+    // Check first the body and then the cond,
+    // as the condition will be put on the bottom.
+    test(while_stmt->body, method, &whctx);
+    test_expr(while_stmt->cond, &whctx);
+
+    FuncArr<llvalue_t> previous_values, new_assigned_values;
+    previous_values.reserve(method->locals.len);
+    new_assigned_values.reserve(method->locals.len);
+
+    i = 0;
+    for (Local *local : method->locals) {
+        previous_values.push(local->llval);
+        // DUMB VALUE
+        new_assigned_values.push({LLVALUE::CONST, 0});
+        ++i;
+    }
+
+    i = 0;
+    for (WhileAssign wa : whctx.track_buf) {
+        assert(i < method->locals.len);
+        // Either no use and no assignment or they are not equal (since
+        // we should have ordering).
+        assert((!wa.assigned && !wa.used) || (wa.used != wa.assigned));
+        if (!wa.assigned) {
+            //log("--- No assignment for: ", wa.local->id, "\n");
+        } else {
+            if (wa.used) {
+                if (wa.used > wa.assigned) {
+                    //log("--- Use after assignment for: ", wa.local->id, "\n");
+                } else {
+                    Local *local = method->locals[i];
+                    new_assigned_values[i].kind = LLVALUE::REG;
+                    new_assigned_values[i].reg = gen_reg();
+                    local->llval = new_assigned_values[i];
+                    //log("--- Use before assignment for: ", wa.local->id, "\n");
+                }
+            }
+        }
+        ++i;
+    }
+
     assert(while_stmt->body);
+    bool save_codegen = config.codegen;
+    // TODO: We should have a save state / restore state.
+    // Get the last register but we actually have to reset it immediately.
+    long save_reg = gen_reg();
+    set_reg(save_reg);
+    long save_lbl = gen_lbl();
+    set_lbl(save_lbl);
+    config.codegen = false;
     while_stmt->body->accept(this);
+    llvm_label_t last_lbl = __expr_context.curr_lbl;
+    set_reg(save_reg);
+    set_lbl(save_lbl);
+    config.codegen = save_codegen;
+
+
+    i = 0;
+    for (WhileAssign wa : whctx.track_buf) {
+        Local *local = method->locals[i];
+        assert(i < method->locals.len);
+        // Either no use and no assignment or they are not equal (since
+        // we should have ordering).
+        assert((!wa.assigned && !wa.used) || (wa.used != wa.assigned));
+        bool insert_phi = false;
+        if (!wa.assigned) {
+            //log("--- No assignment for: ", wa.local->id, "\n");
+        } else {
+            if (wa.used) {
+                if (wa.used > wa.assigned) {
+                    //log("--- Use after assignment for: ", wa.local->id, "\n");
+                } else {
+                    insert_phi = true;
+                    //log("--- Use before assignment for: ", wa.local->id, "\n");
+                }
+            }
+        }
+        if (insert_phi) {
+            long reg = new_assigned_values[i].reg;
+            local->llval = while_phi_node(local->type, previous_values[i], local->llval,
+                                          pred_lbl, last_lbl, reg);
+        } else {
+            // Restore in the general case
+            local->llval = previous_values[i];
+        }
+        ++i;
+    }
+    
+    while_stmt->body->accept(this);
+    while_stmt->cond->accept(this);
+    cond_val = __expr_context.llval;
+    llvm_branch_cond(cond_val, loop_lbl, after_loop_lbl);
+    llvm_gen_lbl(after_loop_lbl);
+
+    // Generate a phi node after the while
+    i = 0;
+    for (WhileAssign wa : whctx.track_buf) {
+        Local *local = method->locals[i];
+        assert(i < method->locals.len);
+        // Either no use and no assignment or they are not equal (since
+        // we should have ordering).
+        assert((!wa.assigned && !wa.used) || (wa.used != wa.assigned));
+        bool insert_phi = false;
+        if (!wa.assigned) {
+            //log("--- No assignment for: ", wa.local->id, "\n");
+        } else {
+            if (wa.used) {
+                if (wa.used > wa.assigned) {
+                    //log("--- Use after assignment for: ", wa.local->id, "\n");
+                } else {
+                    insert_phi = true;
+                    //log("--- Use before assignment for: ", wa.local->id, "\n");
+                }
+            }
+        }
+        if (insert_phi) {
+            long reg = gen_reg();
+            local->llval = while_phi_node(local->type, previous_values[i], local->llval,
+                                          pred_lbl, last_lbl, reg);
+        }
+        ++i;
+    }
 }
 
 void MainTypeCheckVisitor::visit(PrintStatement *print_stmt) {

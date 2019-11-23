@@ -1,16 +1,12 @@
 %class.A = type { i8 (...)**, i32* }
 
 define i32 A__constant_propagate_integer() {
-    %1 = alloca i32, align 4
-    %2 = alloca i32*, align 8
 entry:
-    %3 = call noalias i8* @calloc(i32 1, i32 44)
-    %4 = bitcast i8* %3 to i32*
-    store i32 10, i32* %4
-    store i32* %4, i32** %2
-    %5 = load i32*, i32** %2, align 8
-    %6 = getelementptr inbounds i32, i32* %5, i32 9
-    store i32 3, i32* %6
+    %1 = call noalias i8* @calloc(i32 1, i32 44)
+    %2 = bitcast i8* %1 to i32*
+    store i32 10, i32* %2
+    %3 = getelementptr inbounds i32, i32* %2, i32 9
+    store i32 3, i32* %3
     ret i32 1
 }
 

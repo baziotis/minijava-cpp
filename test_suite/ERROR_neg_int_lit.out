@@ -1,3 +1,2 @@
 ERROR_neg_int_lit.java: 9:  Syntax Error: An expression can't start with: `-`
 ERROR_neg_int_lit.java: 9:  Syntax Error: RHS expression of assignment to `a` is invalid;  skipping `-`, `IntegerLiteral 1`
-ERROR_neg_int_lit.java: 10:  Semantic Error: Variable: `a` might have not been initialized.

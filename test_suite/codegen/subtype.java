@@ -10,10 +10,6 @@ class A extends B {
         b = new A();
         return b;
     }
-
-    public int foo(int a) {
-        return 2;
-    }
 }
 
 class B { }

@@ -2,18 +2,10 @@
 %class.A = type { %class.B, i32 }
 
 define %class.B* A__test_int() {
-    %1 = alloca %class.B*, align 8
 entry:
-    %2 = call noalias i8* @calloc(i32 1, i32 12)
-    %3 = bitcast i8* %2 to %class.A*
-    %4 = bitcast %class.A* %3 to %class.B*
-    store %class.B* %4, %class.B** %1
-    %5 = load %class.B*, %class.B** %1, align 8
-    ret %class.B* %5
-}
-
-define i32 A__foo(i32 %1) {
-entry:
-    ret i32 2
+    %1 = call noalias i8* @calloc(i32 1, i32 12)
+    %2 = bitcast i8* %1 to %class.A*
+    %3 = bitcast %class.A* %2 to %class.B*
+    ret %class.B* %3
 }
 

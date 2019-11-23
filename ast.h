@@ -252,7 +252,7 @@ struct PrintStatement : public Statement {
     Expression *to_print;
 
     PrintStatement() {
-        kind = STMT::WHILE;
+        kind = STMT::PRINT;
     }
 
     const char *name() const override {

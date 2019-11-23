@@ -31,6 +31,10 @@ void reset_lbl() {
     lbl = 0;   
 }
 
+void set_lbl(long _lbl) {
+    lbl = _lbl - 1;   
+}
+
 long gen_lbl() {
     ++lbl;
     return lbl;
@@ -399,7 +403,7 @@ llvalue_t llvm_alloca(Type *type) {
     } break;
     // We don't actually want to assert here because we might have an undefined
     // type. The error has been issued elsewhere.
-    //default: //assert(0);
+    default: break;
     }
     return v;
 }
@@ -467,11 +471,13 @@ void cgen_start_method(Method *method, const char *class_name) {
         Local *local = method->locals[var_counter];
         local->kind = (int)LOCAL_KIND::VAR;
         local->index = var_counter;
+        /*
         llvalue_t allocated_mem = llvm_alloca(local->type);
         local->llval = allocated_mem;
         // Locals are initially not initialed. We have allocated
         // memory for them with `alloca`.
         local->initialized = false;
+        */
     }
 
     llvm_label_t entry_lbl = llvm_label_t("entry");
