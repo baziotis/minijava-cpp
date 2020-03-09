@@ -2,22 +2,24 @@
 %class.B = type { %class.A, %class.C*, i32 }
 %class.C = type { i8 (...)** }
 
-define i32 A__foo() {
+declare i8* @calloc(i32, i32)
+
+define i32 @A__foo(i8* %0) {
 entry:
     ret i32 1
 }
 
-define i1 A__fa() {
+define i1 @A__fa(i8* %0) {
 entry:
     ret i1 0
 }
 
-define i32 B__foo() {
+define i32 @B__foo(i8* %0) {
 entry:
     ret i32 2
 }
 
-define i1 B__bla() {
+define i1 @B__bla(i8* %0) {
 entry:
     ret i1 1
 }

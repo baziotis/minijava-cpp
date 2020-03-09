@@ -26,6 +26,16 @@ int ends_with(const char *str, const char *needle, int *len) {
     return 1;
 }
 
+int check_mismatch(const char *name) {
+  struct stat st;
+  stat("curr_diff", &st);
+  if (st.st_size != 0) {
+      printf("MISMATCH in %s\n", name);
+      return 0;
+  }
+  return 1;
+}
+
 void test_dir(const char *dir) {
     DIR *src;
     struct dirent *entry;
@@ -49,15 +59,13 @@ void test_dir(const char *dir) {
             system(buf);
             sprintf(buf, "diff curr_out %.*s.out > curr_diff", namelen - 5, entry->d_name);
             system(buf);
+            if (!check_mismatch(entry->d_name))
+              break;
+            sprintf(buf, "opt -S curr_out > opt_out");
+            system(buf);
+            system("rm curr_diff");
             system("rm curr_out");
-            struct stat st;
-            stat("curr_diff", &st);
-            if (st.st_size != 0) {
-                printf("MISMATCH in %s\n", entry->d_name);
-                break;
-            } else {
-                system("rm curr_diff");
-            }
+            system("rm opt_out");
         }
     }
     closedir(src);

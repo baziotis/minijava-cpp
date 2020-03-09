@@ -1,6 +1,8 @@
 %class.A = type { i8 (...)**, i32* }
 
-define i32 A__constant_propagate_integer() {
+declare i8* @calloc(i32, i32)
+
+define i32 @A__constant_propagate_integer(i8* %0) {
 entry:
     %1 = call noalias i8* @calloc(i32 1, i32 44)
     %2 = bitcast i8* %1 to i32*

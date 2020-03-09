@@ -258,6 +258,9 @@ bool typecheck(Goal *goal) {
     // Offset computation
     type_table.offset_computation();
 
+    // Print calloc declarations etc.
+    cgen_init();
+
     // Pass 2
     full_typecheck(goal, type_table);
     
@@ -1771,7 +1774,11 @@ void MainTypeCheckVisitor::visit(WhileStatement *while_stmt) {
     // false value. If we reach here and we have a const, then it's
     // definitely true in which case we don't generate the branch, we
     // just get to the loop.
+    // However, note that we have to remember that for the while
+    // so that we remember if we need to create a phi or not.
+    bool generated_cond_branch = false;
     if (cond_val.kind != LLVALUE::CONST) {
+        generated_cond_branch = true;
         llvm_branch_cond(cond_val, loop_lbl, after_loop_lbl);
     } else {
         llvm_branch(loop_lbl);
@@ -1941,17 +1948,20 @@ void MainTypeCheckVisitor::visit(WhileStatement *while_stmt) {
     /// Of course the phi will be between their before-loop-llvalue and the
     /// value they get assigned inside the loop.
 
-    // Generate a phi node after the while
-    i = 0;
-    for (WhileAssign wa : track_buf) {
-        Local *local = wa.local;
-        llvalue_t prev_value = previous_values[i];
-        llvalue_t new_value = local->llval;
-        if (wa.assigned) {
-            local->llval = llvm_phi_node(local->type, prev_value, new_value,
-                                         pred_lbl, last_lbl);
-        }
-        ++i;
+    // Generate a phi node after the while. Do that only if the condition
+    // was not known and so a conditional branch was inserted.
+    if (generated_cond_branch) {
+      i = 0;
+      for (WhileAssign wa : track_buf) {
+          Local *local = wa.local;
+          llvalue_t prev_value = previous_values[i];
+          llvalue_t new_value = local->llval;
+          if (wa.assigned) {
+              local->llval = llvm_phi_node(local->type, prev_value, new_value,
+                                           pred_lbl, last_lbl);
+          }
+          ++i;
+      }
     }
 }
 

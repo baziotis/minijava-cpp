@@ -78,6 +78,7 @@ struct ExprContext {
 };
 
 
+void cgen_init();
 void cgen_print_llvalue(llvalue_t v, bool its_bool = false);
 void cgen_print_lltype(Type *type);
 long gen_reg();

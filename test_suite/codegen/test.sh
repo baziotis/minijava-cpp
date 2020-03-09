@@ -5,5 +5,5 @@ cd test_suite/codegen
 cd ../
 cp ../main .
 cd codegen
-gcc ../test.c -o test && ./test
+gcc ./test.c -o test && ./test
 rm test

@@ -17,12 +17,12 @@ extern config_t config;
 static long reg;
 
 void set_reg(ssize_t v) {
-    reg = v - 1;
+    reg = v;
 }
 
 long gen_reg() {
     ++reg;
-    return reg;
+    return reg - 1;
 }
 
 static long lbl;
@@ -47,6 +47,12 @@ void emit(const char *fmt, ...) {
         vprintf(fmt, args);
         va_end(args);
     }
+}
+
+void cgen_init() {
+  if (config.codegen) {
+    printf("declare i8* @calloc(i32, i32)\n\n");
+  }
 }
 
 llvalue_t llvm_op_const(int op, int val1, int val2) {
@@ -321,12 +327,12 @@ void llvm_branch_cond(llvalue_t cond, llvm_label_t l1, llvm_label_t l2) {
     print_codegen_indentation();
     emit("br i1 ");
     cgen_print_llvalue(cond);
-    emit(", label %s, label %s\n\n", l1.lbl, l2.lbl);
+    emit(", label %%%s, label %%%s\n\n", l1.lbl, l2.lbl);
 }
 
 void llvm_branch(llvm_label_t l) {
     print_codegen_indentation();
-    emit("br %s\n\n", l.lbl);
+    emit("br label %%%s\n\n", l.lbl);
 }
 
 llvalue_t llvm_phi_node(Type *type, llvalue_t val1,
@@ -344,9 +350,9 @@ llvalue_t llvm_phi_node(Type *type, llvalue_t val1,
     cgen_print_lltype(type);
     emit(" [ ");
     cgen_print_llvalue(val1);
-    emit(", %s ], [ ", lbl1.lbl);
+    emit(", %%%s ], [ ", lbl1.lbl);
     cgen_print_llvalue(val2);
-    emit(", %s ]\n", lbl2.lbl);
+    emit(", %%%s ]\n", lbl2.lbl);
     return phi_value;
 }
 
@@ -435,16 +441,21 @@ void cgen_start_method(Method *method, const char *class_name) {
     // Emit function prototype
     emit("define ");
     cgen_print_lltype(method->ret_type);
-    emit(" %s__%s(", class_name, method->id);
+    emit(" @%s__%s(", class_name, method->id);
     
+    // Emit `this` pointer.
+    size_t param_len = method->param_len;
+    emit("i8* %%0");
+    if (param_len)
+      emit(", ");
+    
+
     // Initialize parameters with registers and also
     // print them as part of the method prototype.
-
     // We're starting from 1, because register 0
     // is always reserved for the 'this' pointer.
     // Set a register _only_ for the parameters.
     size_t local_reg_counter = 1;
-    size_t param_len = method->param_len;
     size_t param_counter;
     for (param_counter = 0; param_counter < param_len; ++param_counter) {
         Local *local = method->locals[param_counter];
