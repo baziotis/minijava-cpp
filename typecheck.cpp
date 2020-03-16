@@ -634,7 +634,7 @@ static Local *lookup_local(const char *id, Method *method, IdType *cls) {
     // Check parent's fields (account for cyclic inheritance).
     IdType *runner = cls;
     while (runner->parent) {
-        runner = cls->parent;
+        runner = runner->parent;
         local = runner->fields.find(id);
         if (local) {
             return local;
