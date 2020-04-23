@@ -95,7 +95,9 @@ static Method *lookup_method_parent(const char *id, IdType *cls, IdType **ret_pa
         runner = runner->parent;
         Method *method = runner->methods.find(id);
         if (method) {
-            *ret_parent = runner;
+            if (ret_parent) {
+                *ret_parent = runner;
+            }
             return method;
         }
         // Cyclic inheritance, we issue error elsewhere.

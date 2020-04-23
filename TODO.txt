@@ -1,0 +1,3 @@
+- SerializedHashTable should be used when order matters. However, I may have used
+  it just because you can iterate over it. So, in this case we may want
+  to just add an iterator to HashTable and use that.
