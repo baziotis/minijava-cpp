@@ -275,11 +275,10 @@ struct Local  : public TypeCheckCustomAllocation {
     size_t index;
     // We have to use an `int` instead of LOCAL_KIND to suppress
     // stupid warning.
-    int kind : 3;
-    bool initialized : 1;
+    int8_t kind;
 
-    Local() : id(NULL), initialized(false) { }
-    Local(const char *_id, Type *_type) : id(_id), type(_type), initialized(false) { }
+    Local() : id(NULL) { }
+    Local(const char *_id, Type *_type) : id(_id), type(_type) { }
 
     size_t offsetof_() const {
         // +8 for the virtual pointer.

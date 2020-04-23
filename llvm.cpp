@@ -469,8 +469,6 @@ void cgen_start_method(Method *method, const char *class_name) {
         local->kind = (int)LOCAL_KIND::PARAM;
         local->llval = {LLVALUE::REG, (long)local_reg_counter};
         local->index = param_counter;
-        // All params are considered initialized.
-        local->initialized = true;
         ++local_reg_counter;
     }
     set_reg(local_reg_counter);
