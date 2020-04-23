@@ -1,0 +1,5 @@
+ERROR_bad_index.java: 7:  Syntax Error: You can't have arrays of `boolean` type, only of `int`.
+A.foo: 0
+ERROR_bad_index.java: 9:  Semantic Error: Bad left operand for index operator `[]`. Operand of int array type was expected, found: `boolean`
+ERROR_bad_index.java: 9:  Semantic Error: Bad index expression for index operator `[]`. Operand of int type was expected, found: `boolean`
+ERROR_bad_index.java: 9:  Semantic Error: Incompatible types: `int` can't be converted to `boolean`

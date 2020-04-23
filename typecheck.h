@@ -16,7 +16,9 @@ struct SerializedHashTable {
     size_t len;
     size_t cap;  // For debugging
 
-    SerializedHashTable() { }
+    SerializedHashTable() {
+        serialized = NULL;
+    }
 
     inline bool insert(const char *id, T v) {
         if (len == cap) return false;
@@ -31,6 +33,13 @@ struct SerializedHashTable {
     }
 
     inline void reserve(size_t n) {
+        if (n == 0) {
+          table.reserve(0);
+          serialized = NULL;
+          len = 0;
+          cap = 0;
+          return;
+        }
         cap = n;
         len = 0;
         serialized = (T *) allocate(cap * sizeof(T), MEM::TYPECHECK);

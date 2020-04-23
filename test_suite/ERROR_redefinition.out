@@ -1,3 +1,8 @@
-ERROR_redefinition.java: 12:  Semantic Error: In class with id: `A`, redefinition of field with id: `test`
-ERROR_redefinition.java: 21:  Semantic Error: In class with id: `B`, redefinition of method with id: `test`. A field with the same id has already been defined
-ERROR_redefinition.java: 38:  Semantic Error: In class with id: `C`, redefinition of method with id: `test`. Note that you can override but not overload a method
+ERROR_redefinition.java: 11:  Semantic Error: In class with id: `A`, redefinition of field with id: `test`
+ERROR_redefinition.java: 31:  Semantic Error: In class with id: `C`, redefinition of method with id: `test`. Note that you can override but not overload a method
+A.test: 0
+A.a: 4
+B.test: 0
+B.test: 0
+C.test: 0
+C.dummy: 8

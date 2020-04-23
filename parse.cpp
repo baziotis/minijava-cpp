@@ -494,8 +494,9 @@ static Typespec parse_typespec() {
     {
         next_token();
         tspec.kind = TYSPEC::BOOL;
-        if (is_token(TOK::LBRACKET)) {
-            warning("You can't have arrays of `boolean` type, only of `int`.");
+        if (match_token(TOK::LBRACKET)) {
+            syntax_error("You can't have arrays of `boolean` type, only of `int`.");
+            match_token(TOK::RBRACKET);
         }
     } break;
     case TOK::ID:

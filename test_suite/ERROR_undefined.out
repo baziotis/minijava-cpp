@@ -1,1 +1,2 @@
-ERROR_undefined.java: 9:  Semantic Error: Type `B` has not been defined
+ERROR_undefined.java: 8:  Semantic Error: Type `B` has not been defined
+A.test: 0

@@ -1,0 +1,7 @@
+BBS.Start: 0
+BBS.Sort: 8
+BBS.Print: 16
+BBS.Init: 24
+BBS.number: 0
+BBS.size: 8
+BubbleSort-error.java: 74:  Semantic Error: In identifier expression, Identifier: `sz1` is not defined.

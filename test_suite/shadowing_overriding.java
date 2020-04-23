@@ -1,48 +1,43 @@
 // -unused -no-style
 class Main {
-    public static void main(String[] a) {
-    }
+  public static void main(String[] a) {}
 }
 
 // ---------------------------
 // Shadow field of parent class
 // ---------------------------
 
-class A extends B {
-    // Shadow field `a` of parent class `B`.
-    int a;
-
-    public int test() {
-        return a;
-    }
+class B {
+  int a;
 }
 
-class B {
-    int a;
+class A extends B {
+  // Shadow field `a` of parent class `B`.
+  int a;
+
+  public int test() { return a; }
 }
 
 // ---------------------------
 // Shadow field of current class inside method
 // ---------------------------
 
-class C extends D {
-    // Shadow field `a` of parent class `D`.
-    int[] a;
-
-    public int[] test() {
-        return a;
-    }
-
-    public C test2() {
-        // Shadow field `a` in method.
-        C a;
-        a = new C();  // To avoid uninitialized error
-        return a;
-    }
+class D {
+  int a;
 }
 
-class D {
-    int a;
+class C extends D {
+  // Shadow field `a` of parent class `D`.
+  int[] a;
+
+  public int[] test() { return a; }
+
+  public C test2() {
+    // Shadow field `a` in method.
+    C a;
+    a = new C(); // To avoid uninitialized error
+    return a;
+  }
 }
 
 // ---------------------------
@@ -50,37 +45,39 @@ class D {
 // and method of parent.
 // ---------------------------
 
-class E extends F {
-    // A field of the current class and
-    // a method of the parent class can
-    // have the same id.
-    int a;
+class F {
+  public int a() { return 1; }
 }
 
-class F {
-    public int a() {
-        return 1;
-    }
+class E extends F {
+  // A field of the current class and
+  // a method of the parent class can
+  // have the same id.
+  int a;
 }
 
 // ---------------------------
 // Method Overriding
 // ---------------------------
 
-class G extends H {
-    public int foo() {
-        return 1;
-    }
+class I {
+  public int foo(int a, int[] b) { return 3; }
 }
 
 class H extends I {
-    public int foo(int a) {
-        return 2;
-    }
+  public int foo(int a) { return 2; }
 }
 
-class I {
-    public int foo(int a, int[] b) {
-        return 3;
-    }
+class G extends H {
+  public int foo() { return 1; }
+}
+
+/// Make sure that there's no problem having
+/// same name in field and method.
+
+class J {
+  int x;
+  public int x() {
+    return x;
+  }
 }

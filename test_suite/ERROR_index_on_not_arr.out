@@ -1,2 +1,5 @@
+A.test: 0
+A.foo: 8
+A.a: 0
+ERROR_index_on_not_arr.java: 9:  Semantic Error: Bad left operand for index operator `[]`. Operand of int array type was expected, found: `int`
 ERROR_index_on_not_arr.java: 11:  Semantic Error: Bad left operand for index operator `[]`. Operand of int array type was expected, found: `int`
-ERROR_index_on_not_arr.java: 15:  Semantic Error: Bad left operand for index operator `[]`. Operand of int array type was expected, found: `int`

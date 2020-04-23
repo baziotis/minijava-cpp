@@ -1,7 +1,10 @@
 // -unused -no-style
 class Main {
-    public static void main(String[] a) {
-    }
+  public static void main(String[] a) {}
+}
+
+class B {
+  public int[] overriden(int a) { return new int[10]; }
 }
 
 // Invalid overloading
@@ -10,13 +13,5 @@ class Main {
 // not match as well so they can be
 // disambiguated.
 class A extends B {
-    public int overriden(int a) {
-        return 1;
-    }
-}
-
-class B {
-    public int[] overriden(int a) {
-        return new int[10];
-    }
+  public int overriden(int a) { return 1; }
 }

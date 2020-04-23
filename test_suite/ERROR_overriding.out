@@ -1,2 +1,4 @@
-ERROR_overriding.java: 13:  Semantic Error: overriden(int) in `A` can't override overriden(int) in `B`
+B.overriden: 0
+ERROR_overriding.java: 16:  Semantic Error: overriden(int) in `A` can't override overriden(int) in `B`
   Mismatch in return types `int` and `int[]`
+A.overriden: 8

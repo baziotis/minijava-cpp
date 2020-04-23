@@ -1,3 +1,5 @@
-ERROR_incompatible_types.java: 12:  Semantic Error: Incompatible types: `B` can't be converted to `C`
-ERROR_incompatible_types.java: 23:  Semantic Error: No matching method with id: `test2`
-ERROR_incompatible_types.java: 23:  Semantic Error: The type: `Undefined Type (Error)` of the return expression does not match the return type: `int` of method: `test3`
+A.test: 0
+A.test2: 8
+A.test3: 16
+ERROR_incompatible_types.java: 10:  Semantic Error: Incompatible types: `B` can't be converted to `C`
+ERROR_incompatible_types.java: 18:  Semantic Error: No matching method with id: `test2`

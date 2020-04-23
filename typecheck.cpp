@@ -70,9 +70,10 @@ static bool params_match(Method *m1, Method *m2) {
     if (m1->param_len != m2->param_len) return false;
     size_t it = 0;
     for (Local *p1 : m1->locals) {
+        if (it == m1->param_len) break;
         Local *p2 = m2->locals[it];
         if (p1->type != p2->type) return false;
-        if (it == m1->param_len) break;
+        ++it;
     }
     return true;
 }
@@ -302,7 +303,9 @@ Type* DeclarationVisitor::typespec_to_type(Typespec tspec, location_t loc) {
 /* Type Table
  */
 void TypeTable::initialize(size_t n) {
-    type_table.reserve(n);
+    if (n) {
+      type_table.reserve(n);
+    }
     undefined_type = new Type(TY::UNDEFINED);
     bool_type = new Type(TY::BOOL);
     int_type = new Type(TY::INT);
@@ -446,19 +449,11 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
                             "`. Note that you can override but not overload ",
                             "a method");
         } else {
-            Field *field = type->fields.find(md->id);
-            if (field) {
-                typecheck_error(md->loc, "In class with id: `", type_decl->id,
-                                "`, redefinition of method with id: `",
-                                md->id, "`. A field with the same id ",
-                                "has already been defined");
-            } else {
-                method = md->accept(this);
-                //method->print();
-                assert(method);
-                assert(method->id);
-                type->methods.insert(method->id, method);
-            }
+            method = md->accept(this);
+            //method->print();
+            assert(method);
+            assert(method->id);
+            type->methods.insert(method->id, method);
         }
     }
 }
@@ -596,20 +591,22 @@ void MainTypeCheckVisitor::visit(Method *method, const char *class_name) {
     if (!method->ret_expr->is_undefined()) {
         assert(method->ret_expr);
         Type *ret_type = method->ret_expr->accept(this);
-        assert(ret_type);
-        assert(method->ret_type);
-        llvalue_t ret_val = __expr_context.llval;
-        if (!compatible_types(method->ret_type, ret_type)) {
-            location_t loc_here = method->ret_expr->loc;
-            const char *name = ret_type->name();
-            const char *name2 = method->ret_type->name();
-            const char *id = method->id;
-            typecheck_error(method->ret_expr->loc, "The type: `", ret_type->name(),
-                            "` of the return expression does not match the ",
-                            "return type: `", method->ret_type->name(),
-                            "` of method: `", method->id, "`");
-        } else {
-            llvm_ret(ret_type, ret_val);
+        if (ret_type->kind != TY::UNDEFINED) {
+          assert(ret_type);
+          assert(method->ret_type);
+          llvalue_t ret_val = __expr_context.llval;
+          if (!compatible_types(method->ret_type, ret_type)) {
+              location_t loc_here = method->ret_expr->loc;
+              const char *name = ret_type->name();
+              const char *name2 = method->ret_type->name();
+              const char *id = method->id;
+              typecheck_error(method->ret_expr->loc, "The type: `", ret_type->name(),
+                              "` of the return expression does not match the ",
+                              "return type: `", method->ret_type->name(),
+                              "` of method: `", method->id, "`");
+          } else {
+              llvm_ret(ret_type, ret_val);
+          }
         }
     }
     this->curr_method = NULL;
@@ -732,7 +729,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         Local *local = lookup_local(expr->id, this->curr_method, this->curr_class);
         if (!local) {
             typecheck_error(expr->loc, "In identifier expression, Identifier: `",
-                            expr->id, "` does is not defined.");
+                            expr->id, "` is not defined.");
             return this->type_table.undefined_type;
         }
 
@@ -1138,8 +1135,10 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         assert(be->e1);
         IdType *type = (IdType*) be->e1->accept(this);
         llvalue_t base_obj = __expr_context.llval;
-        assert(type);
-        assert(type->is_IdType());
+
+        if (!type || !type->is_IdType()) {
+            return this->type_table.undefined_type;
+        }
 
         if (type->kind == TY::UNDEFINED) {
             typecheck_error(expr->loc, "In message send expression, Identifier: `",
@@ -1199,16 +1198,17 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
         // Of course, with variable we mean also parameter and field.
         typecheck_error(asgn_stmt->loc, "In assignment statement, variable: `",
                         asgn_stmt->id, "` is not defined");
-        is_correct = false;
+        return;
     }
     assert(asgn_stmt->rhs);
     Type *rhs_type = asgn_stmt->rhs->accept(this);
+    if (rhs_type->kind == TY::UNDEFINED) {
+      return;
+    }
     if (!compatible_types(lhs->type, rhs_type)) {
         typecheck_error(asgn_stmt->loc, "Incompatible types: `",
                         rhs_type->name(), "` can't be converted to `",
                         lhs->type->name(), "`");
-    }
-    if (!is_correct) {
         return;
     }
     /// Codegen ///
@@ -1968,9 +1968,12 @@ void MainTypeCheckVisitor::visit(WhileStatement *while_stmt) {
 void MainTypeCheckVisitor::visit(PrintStatement *print_stmt) {
     LOG_SCOPE;
     debug_print("MainTypeCheck::PrintStatement\n");
-    // A print statement can have any type, we visit it only for
-    // type-checking purposes.
-    print_stmt->to_print->accept(this);
+    // A print statement can have only integer.
+    Type *ty = print_stmt->to_print->accept(this);
+    if (ty != this->type_table.int_type) {
+        typecheck_error(print_stmt->to_print->loc,
+                        "Print statement accepts only integer expressions.");
+    }
 }
 
 

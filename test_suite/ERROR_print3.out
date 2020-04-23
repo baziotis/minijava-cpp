@@ -1,0 +1,2 @@
+A.foo: 0
+ERROR_print3.java: 14:  Semantic Error: Print statement accepts only integer expressions.
