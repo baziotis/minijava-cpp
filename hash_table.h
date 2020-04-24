@@ -22,12 +22,11 @@
 template <typename T, MEM mem>
 struct __HashTable
 {
-    //static_assert(std::is_pointer_v<T> && !std::is_same_v<T, void*>,
-    //    "T must be a pointer and cannot be void *");
+    static_assert(std::is_pointer_v<T> && !std::is_same_v<T, void*>,
+        "T must be a pointer and cannot be void *");
 
     __HashTable() { }
 
-    // TODO: Uncomment those
     // Disallow Copy Constructor
     //__HashTable(const __HashTable<T, mem> &rhs) = delete;
     //__HashTable &operator=(const __HashTable<T, mem> &rhs) = delete;
