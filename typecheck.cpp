@@ -135,6 +135,7 @@ void check_method_for_overrding(Method *method, IdType *type) {
                        method->ret_type->name(), method_parent->ret_type->name());
             }
         } else if (match) {
+            method->offset = method_parent->offset;
             method->overrides = true;
         }
     }
