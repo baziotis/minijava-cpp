@@ -69,5 +69,5 @@ int main(int argc, char **argv) {
     // TODO: Check for fatal parsing errors here and don't continue
     // if they exist.
     
-    bool typecheck_correct = typecheck(&goal);
+    typecheck(&goal);
 }

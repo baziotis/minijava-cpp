@@ -51,7 +51,6 @@ void scan_int() {
 
     // Compute value.
     int val = 0;
-    bool overflow = false;
     while (true) {
         int digit = digit_from_char[tolower(*input)];
         if (digit == 0 && *input != '0') {
@@ -66,7 +65,6 @@ void scan_int() {
         // like 0.
         constexpr int int_max = std::numeric_limits<int>::max();
         if (val > (int_max - digit) / 10) {
-            overflow = false;
             warning("Integer literal overflow.");
             // eat remaining digits
             digit = digit_from_char[*input];

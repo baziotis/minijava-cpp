@@ -3,8 +3,6 @@
 #include "tokens.h"
 
 const char* token_name(TOK tok) {
-    static const char* token_names[TOK_LEN];
-    
     switch (tok) {
     case TOK::EOI: return "End of Input";
     case TOK::LPAR: return "(";

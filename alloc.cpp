@@ -58,13 +58,6 @@ block_t *freeblocks;
        of the arena. Update its pointer to point to this block.
 */
 
-/// Get limit of a current block of an arena. This is used
-/// to check if we have changed block.
-// Maybe get_arena_info() and also give the avail?
-static uint8_t *get_block_limit(MEM ar) {
-    return arena[(int)ar]->limit;
-}
-
 /// Raw size version
 void *allocate(size_t n, MEM enum_ar) {
     int ar = (int) enum_ar;

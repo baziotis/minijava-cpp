@@ -600,10 +600,7 @@ void MainTypeCheckVisitor::visit(Method *method, const char *class_name) {
           llvalue_t ret_val = __expr_context.llval;
           if (!compatible_types(method->ret_type, ret_type)) {
               location_t loc_here = method->ret_expr->loc;
-              const char *name = ret_type->name();
-              const char *name2 = method->ret_type->name();
-              const char *id = method->id;
-              typecheck_error(method->ret_expr->loc, "The type: `", ret_type->name(),
+              typecheck_error(loc_here, "The type: `", ret_type->name(),
                               "` of the return expression does not match the ",
                               "return type: `", method->ret_type->name(),
                               "` of method: `", method->id, "`");
@@ -1196,7 +1193,6 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
     assert(this->curr_method);
     assert(this->curr_class);
     Local *lhs = lookup_local(asgn_stmt->id, this->curr_method, this->curr_class);
-    bool is_correct = true;
     if (!lhs) {
         // Of course, with variable we mean also parameter and field.
         typecheck_error(asgn_stmt->loc, "In assignment statement, variable: `",
@@ -1510,8 +1506,6 @@ void MainTypeCheckVisitor::visit(IfStatement *if_stmt) {
     
     // Save if we're currently inside an if or an else.
     bool save_in_if = __expr_context.in_if;
-    // Save the label we're currently in.
-    llvm_label_t save_initial_lbl = __expr_context.curr_lbl;
     llvm_gen_lbl(if_lbl);
     __expr_context.in_if = true;
     if_stmt->then->accept(this);
