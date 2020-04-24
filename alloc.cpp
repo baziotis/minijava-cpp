@@ -3,7 +3,7 @@
 #include <string.h>    // memset()
 
 #include "alloc.h"     // MEM
-#include "common.h"     // MEM
+#include "common.h"
 
 /********************************** ALLOC *****************************************
     
