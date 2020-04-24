@@ -304,7 +304,6 @@ struct Method : public TypeCheckCustomAllocation {
     // Offset in the virtual table
     size_t offset;
     location_t loc;
-    bool overrides;  // if it overrides parent method
     
     // Copied from the MethodDeclaration
     Buf<Statement*> stmts;

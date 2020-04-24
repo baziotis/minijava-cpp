@@ -117,7 +117,7 @@ static Method *lookup_method(const char *id, IdType *cls) {
 }
 
 
-void check_method_for_overrding(Method *method, IdType *type) {
+bool check_method_for_overrding(Method *method, IdType *type) {
     IdType *parent;
     Method *method_parent = lookup_method_parent(method->id, type, &parent);
     if (method_parent) {
@@ -136,9 +136,10 @@ void check_method_for_overrding(Method *method, IdType *type) {
             }
         } else if (match) {
             method->offset = method_parent->offset;
-            method->overrides = true;
+            return true;
         }
     }
+    return false;
 }
 
 void TypeTable::compute_and_print_offsets_for_type(IdType *type) {
@@ -184,8 +185,7 @@ void TypeTable::compute_and_print_offsets_for_type(IdType *type) {
     int num_methods = start_methods / 8;
     size_t running_offset = start_methods;
     for (Method *method: type->methods) {
-        check_method_for_overrding(method, type);
-        if (!method->overrides) {
+        if (!check_method_for_overrding(method, type)) {
             if (config.offsets) {
                 printf("%s.%s: %zd\n", type->id, method->id, running_offset);
             }
@@ -1993,5 +1993,4 @@ Method::Method(MethodDeclaration *method_decl) {
     stmts = method_decl->stmts;
     ret_expr = method_decl->ret;
     loc = method_decl->loc;
-    overrides = false;
 }
