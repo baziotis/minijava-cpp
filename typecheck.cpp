@@ -306,9 +306,7 @@ Type* DeclarationVisitor::typespec_to_type(Typespec tspec, location_t loc) {
 /* Type Table
  */
 void TypeTable::initialize(size_t n) {
-    if (n) {
-      type_table.reserve(n);
-    }
+    type_table.reserve(n);
     undefined_type = new Type(TY::UNDEFINED);
     bool_type = new Type(TY::BOOL);
     int_type = new Type(TY::INT);

@@ -17,7 +17,10 @@ struct SerializedHashTable {
     size_t cap;  // For debugging
 
     SerializedHashTable() {
+        table.reserve(0);
         serialized = NULL;
+        len = 0;
+        cap = 0;
     }
 
     inline bool insert(const char *id, T v) {
@@ -34,10 +37,6 @@ struct SerializedHashTable {
 
     inline void reserve(size_t n) {
         if (n == 0) {
-          table.reserve(0);
-          serialized = NULL;
-          len = 0;
-          cap = 0;
           return;
         }
         cap = n;
@@ -52,7 +51,7 @@ struct SerializedHashTable {
     }
 
     inline T* begin() { return this->serialized; }
-    inline T* end() { return &this->serialized[len]; }
+    inline T* end() { return (this->serialized + len); }
 
     T& operator[](size_t i) { return serialized[i]; }
 };
