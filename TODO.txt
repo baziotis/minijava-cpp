@@ -3,4 +3,4 @@
   to just add an iterator to HashTable and use that.
 - poison_expr() has been introduced but it has not been tested.
   For example, when it was introduced, no changes occured
-  in the test suite.
+  in the test suite. Same for poison_stmt()

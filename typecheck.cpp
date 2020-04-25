@@ -1185,6 +1185,11 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
     }
 }
 
+#define poison_stmt(t) \
+  if (t->kind == TY::UNDEFINED) { \
+    return;\
+  } \
+
 /* Statements
  */
 void MainTypeCheckVisitor::visit(BlockStatement *block_stmt) {
@@ -1207,11 +1212,10 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
                         asgn_stmt->id, "` is not defined");
         return;
     }
+    poison_stmt(lhs->type);
     assert(asgn_stmt->rhs);
     Type *rhs_type = asgn_stmt->rhs->accept(this);
-    if (rhs_type->kind == TY::UNDEFINED) {
-      return;
-    }
+    poison_stmt(rhs_type);
     if (!compatible_types(lhs->type, rhs_type)) {
         typecheck_error(asgn_stmt->loc, "Incompatible types: `",
                         rhs_type->name(), "` can't be converted to `",
@@ -1275,6 +1279,7 @@ void MainTypeCheckVisitor::visit(ArrayAssignmentStatement *arr_asgn_stmt) {
     }
     assert(arr_asgn_stmt->index);
     Type *index_type = arr_asgn_stmt->index->accept(this);
+    poison_stmt(index_type);
     llvalue_t index = __expr_context.llval;
     if (index_type != this->type_table.int_type) {
         typecheck_error(arr_asgn_stmt->loc, "In array assignment statement, the ",
@@ -1284,6 +1289,7 @@ void MainTypeCheckVisitor::visit(ArrayAssignmentStatement *arr_asgn_stmt) {
     }
     assert(arr_asgn_stmt->rhs);
     Type *rhs_type = arr_asgn_stmt->rhs->accept(this);
+    poison_stmt(rhs_type);
     llvalue_t rhs_val = __expr_context.llval;
     if (rhs_type != this->type_table.int_type) {
         typecheck_error(arr_asgn_stmt->loc, "In array assignment statement, the ",
@@ -1320,6 +1326,7 @@ void MainTypeCheckVisitor::visit(IfStatement *if_stmt) {
     LOG_SCOPE;
     debug_print("MainTypeCheck::IfStatement:\n");
     Type *condty = if_stmt->cond->accept(this);
+    poison_stmt(condty);
     if (condty != this->type_table.bool_type) {
         typecheck_error(if_stmt->loc, "In if statement, the ",
                         "condition expression must have `boolean` type but has: `",
@@ -1739,6 +1746,7 @@ void MainTypeCheckVisitor::visit(WhileStatement *while_stmt) {
     LOG_SCOPE;
     debug_print("MainTypeCheck::WhileStatement\n");
     Type *cond = while_stmt->cond->accept(this);
+    poison_stmt(cond);
     llvalue_t cond_val = __expr_context.llval;
     if (cond != this->type_table.bool_type) {
         typecheck_error(while_stmt->loc, "In while statement, the ",
@@ -1975,6 +1983,7 @@ void MainTypeCheckVisitor::visit(PrintStatement *print_stmt) {
     debug_print("MainTypeCheck::PrintStatement\n");
     // A print statement can have only integer.
     Type *ty = print_stmt->to_print->accept(this);
+    poison_stmt(ty);
     if (ty != this->type_table.int_type) {
         typecheck_error(print_stmt->to_print->loc,
                         "Print statement accepts only integer expressions.");
