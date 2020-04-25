@@ -1,3 +1,6 @@
 - SerializedHashTable should be used when order matters. However, I may have used
   it just because you can iterate over it. So, in this case we may want
   to just add an iterator to HashTable and use that.
+- poison_expr() has been introduced but it has not been tested.
+  For example, when it was introduced, no changes occured
+  in the test suite.

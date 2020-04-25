@@ -679,6 +679,9 @@ static Method *deduce_method(FuncArr<Type*> expr_list, const char *method_id, Id
 static Type *typecheck_and_helper(bool is_correct, Expression *expr,
                                   MainTypeCheckVisitor *v, Type *boolty, Type *undefinedty) {
     Type *ty = expr->accept(v);
+    if (ty->kind == TY::UNDEFINED) {
+        return undefinedty;
+    }
     if (ty != boolty) {
         typecheck_error(expr->loc, "Bad right operand for binary operator `&&`. Operand ",
                         "of boolean type was expected, found: `", ty->name(), "`");
@@ -690,7 +693,10 @@ static Type *typecheck_and_helper(bool is_correct, Expression *expr,
     return undefinedty;
 }
 
-
+#define poison_expr(t) \
+  if (t->kind == TY::UNDEFINED) { \
+    return this->type_table.undefined_type; \
+  } \
 
 // IMPORTANT: DO NOT check if a type is undefined with equality test with
 // type_table.undefined_type. Check a note above on a full explanation.
@@ -821,6 +827,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         debug_print("MainTypeCheck::ArrayAllocationExpression\n");
         assert(expr->e1);
         Type *index_type = expr->e1->accept(this);
+        poison_expr(index_type);
         if (index_type != this->type_table.int_type) {
             typecheck_error(expr->loc, "In array allocation expression, ",
                             "the index expression must be of integer type.");
@@ -856,6 +863,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         debug_print("MainTypeCheck::LengthExpression\n");
         assert(expr->e1);
         Type *arr = expr->e1->accept(this);
+        poison_expr(arr);
         llvalue_t ptr = __expr_context.llval;
         if (arr != this->type_table.int_arr_type) {
             typecheck_error(expr->loc, "In array length expression, ",
@@ -877,6 +885,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         debug_print("MainTypeCheck::NotExpression\n");
         assert(expr->e1);
         Type *ty = expr->e1->accept(this);
+        poison_expr(ty);
         llvalue_t res = __expr_context.llval;
         if (ty != this->type_table.bool_type) {
             typecheck_error(expr->loc, "Bad operand for unary operator `!`. Operand ",
@@ -903,6 +912,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         assert(be->e1);
         assert(be->e2);
         Type *ty1 = be->e1->accept(this);
+        poison_expr(ty1);
         llvalue_t res = __expr_context.llval;
         bool is_correct = true;
 
@@ -994,8 +1004,10 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         assert(be->e1);
         assert(be->e2);
         Type *ty1 = be->e1->accept(this);
+        poison_expr(ty1);
         llvalue_t res1 = __expr_context.llval;
         Type *ty2 = be->e2->accept(this);
+        poison_expr(ty2);
         llvalue_t res2 = __expr_context.llval;
 
         if (ty1 != this->type_table.int_type) {
@@ -1031,8 +1043,10 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         }
 
         Type *ty1 = be->e1->accept(this);
+        poison_expr(ty1);
         llvalue_t res1 = __expr_context.llval;
         Type *ty2 = be->e2->accept(this);
+        poison_expr(ty2);
         llvalue_t res2 = __expr_context.llval;
 
         if (ty1 != this->type_table.int_type) {
@@ -1056,8 +1070,10 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         assert(be->e1);
         assert(be->e2);
         Type *ty1 = be->e1->accept(this);
+        poison_expr(ty1);
         llvalue_t ptr = __expr_context.llval;
         Type *ty2 = be->e2->accept(this);
+        poison_expr(ty2);
         llvalue_t index = __expr_context.llval;
 
         if (ty1 != this->type_table.int_arr_type) {
@@ -1134,17 +1150,9 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         debug_print("MainTypeCheck::MessageSendExpression\n");
         assert(be->e1);
         IdType *type = (IdType*) be->e1->accept(this);
+        poison_expr(type);
         llvalue_t base_obj = __expr_context.llval;
 
-        if (!type || !type->is_IdType()) {
-            return this->type_table.undefined_type;
-        }
-
-        if (type->kind == TY::UNDEFINED) {
-            typecheck_error(expr->loc, "In message send expression, Identifier: `",
-                            expr->id, "` does not denote a known type");
-            return this->type_table.undefined_type;
-        }
         if (!type->is_IdType()) {
             typecheck_error(expr->loc, "Bad dereferenced operand for message",
                             "send operator `.`. ", "Operand of user-defined ",
