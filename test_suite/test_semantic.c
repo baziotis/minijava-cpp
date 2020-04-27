@@ -48,7 +48,6 @@ int main() {
       system(buf);
       sprintf(buf, "diff curr_out ./%.*s.out > curr_diff", namelen - 5, entry->d_name);
       system(buf);
-      system("rm curr_out");
       stat("curr_diff", &st);
       if (st.st_size != 0) {
         printf("MISMATCH in %s\n", entry->d_name);
@@ -56,6 +55,7 @@ int main() {
       } else {
         printf("\t\033[1;32m SUCCESS \033[0m\n");
         system("rm curr_diff");
+        system("rm curr_out");
       }
     }
   }

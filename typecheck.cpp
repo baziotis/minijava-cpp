@@ -70,33 +70,6 @@ void full_typecheck(Goal *goal, TypeTable type_table) {
     goal->accept(&main_visitor);
 }
 
-static Method *lookup_method_parent(const char *id, IdType *cls, IdType **ret_parent = NULL) {
-    IdType *runner = cls;
-    while (runner->parent) {
-        runner = runner->parent;
-        Method *method = runner->methods.find(id);
-        if (method) {
-            if (ret_parent) {
-                *ret_parent = runner;
-            }
-            return method;
-        }
-        // Cyclic inheritance, we issue error elsewhere.
-        if (runner == cls) break;
-    }
-    return NULL;
-}
-
-static Method *lookup_method(const char *id, IdType *cls) {
-    // Check current class's methods
-    Method *method = cls->methods.find(id);
-    if (method) {
-        return method;
-    }
-    // Check parent's methods (account for cyclic inheritance).
-    return lookup_method_parent(id, cls);
-}
-
 static bool params_match(Method *m1, Method *m2) {
     if (m1->param_len != m2->param_len) return false;
     size_t it = 0;
@@ -589,7 +562,6 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
     } else {
         type = new IdType(type_decl->id, type_decl->vars.len, type_decl->methods.len);
         type->loc = type_decl->loc;
-        // TODO: insert it as undefined if it's not correct.
         this->type_table.insert(type->id, type);
     }
     // Handle inheritance
@@ -858,6 +830,33 @@ static bool check_expr_list_against_method(FuncArr<Type*> expr_list, Method *met
     }
     assert(formal_param_counter == method->param_len);
     return true;
+}
+
+static Method *lookup_method_parent(const char *id, IdType *cls, IdType **ret_parent = NULL) {
+    IdType *runner = cls;
+    while (runner->parent) {
+        runner = runner->parent;
+        Method *method = runner->methods.find(id);
+        if (method) {
+            if (ret_parent) {
+                *ret_parent = runner;
+            }
+            return method;
+        }
+        // Cyclic inheritance, we issue error elsewhere.
+        if (runner == cls) break;
+    }
+    return NULL;
+}
+
+static Method *lookup_method(const char *id, IdType *cls) {
+    // Check current class's methods
+    Method *method = cls->methods.find(id);
+    if (method) {
+        return method;
+    }
+    // Check parent's methods (account for cyclic inheritance).
+    return lookup_method_parent(id, cls);
 }
 
 static Method *deduce_method(FuncArr<Type*> expr_list, const char *method_id, IdType *cls) {
@@ -2190,7 +2189,6 @@ void MainTypeCheckVisitor::visit(PrintStatement *print_stmt) {
                         "Print statement accepts only integer expressions.");
     }
 }
-
 
 const char *Type::name() const {
     switch (kind) {

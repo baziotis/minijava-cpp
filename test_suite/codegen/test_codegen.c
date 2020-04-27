@@ -31,7 +31,8 @@ int main()
     DIR *src;
     struct dirent *entry;
 
-    src = opendir("../inputs/codegen");
+    src = opendir("./");
+    assert(src);
     while ((entry = readdir(src)))
     {
         int namelen;
@@ -40,25 +41,27 @@ int main()
             struct stat st;
             char buf[512];
             printf("-- Codegen -- %s\n", entry->d_name);
-            sprintf(buf, "java MiniJava ../inputs/codegen/%s -codegen > curr_out", entry->d_name);
-            system(buf);
-            sprintf(buf, "../inputs/codegen/%.*s.ll", namelen - 5, entry->d_name);
+            sprintf(buf, "./%.*s.ll", namelen - 5, entry->d_name);
             stat(buf, &st);
-            if (st.st_size == 0) {
-                printf("\t\033[1;31m No .ll \033[0m\n");
-                continue;
+            if (access(buf, F_OK) == -1) {
+              printf("\t\033[1;31m No .ll \033[0m\n");
+              continue;
             }
-            sprintf(buf, "diff curr_out ../inputs/codegen/%.*s.ll > curr_diff", namelen - 5, entry->d_name);
+            sprintf(buf, "../../main %s -codegen > curr_out", entry->d_name);
             system(buf);
-            system("rm curr_out");
+            sprintf(buf, "diff curr_out ./%.*s.ll > curr_diff", namelen - 5, entry->d_name);
+            system(buf);
             stat("curr_diff", &st);
             if (st.st_size != 0) {
-                printf("MISMATCH in %s\n", entry->d_name);
+                printf("MISMATCH2 in %s\n", entry->d_name);
                 break;
             } else {
+                printf("\t\033[1;32m SUCCESS \033[0m\n");
                 system("rm curr_diff");
+                system("rm curr_out");
             }
 
+            /*
             // Test the output
             // Copy the file to Main.java 'cause all classes are Main
             sprintf(buf, "~/llvm-project/bin/clang ../inputs/codegen/%.*s.ll -o test -Wno-override-module", namelen - 5, entry->d_name);
@@ -81,6 +84,7 @@ int main()
                 system("rm curr_diff");
                 system("rm ./curr_out");
             }
+            */
         }
     }
     closedir(src);
