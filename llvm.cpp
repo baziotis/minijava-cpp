@@ -40,6 +40,22 @@ long gen_lbl() {
     return lbl;
 }
 
+llvalue_t register_llv(long r, LLType type) {
+    llvalue_t llval;
+    llval.kind = LLVALUE::REG;
+    llval.reg = r;
+    llval.ty = type;
+    return llval;
+}
+
+llvalue_t const_llv(int v, LLType type) {
+    llvalue_t llval;
+    llval.kind = LLVALUE::CONST;
+    llval.val = v;
+    llval.ty = type;
+    return llval;
+}
+
 void emit(const char *fmt, ...) {
     if (config.codegen) {
         va_list args;
@@ -56,17 +72,16 @@ void cgen_init() {
 }
 
 llvalue_t llvm_op_const(int op, int val1, int val2) {
-    llvalue_t v;
-    v.kind = LLVALUE::CONST;
+    int val = 0;
     switch (op) {
-    case '+': v.val = val1 + val2; break;
-    case '-': v.val = val1 - val2; break;
-    case '*': v.val = val1 * val2; break;
-    case '<': v.val = val1 < val2; break;
-    case '&': v.val = val1 && val2; break;
+    case '+': val = val1 + val2; break;
+    case '-': val = val1 - val2; break;
+    case '*': val = val1 * val2; break;
+    case '<': val = val1 < val2; break;
+    case '&': val = val1 && val2; break;
     default: assert(0);
     }
-    return v;
+    return const_llv(val, {});
 }
 
 static void print_const_llvalue(llvalue_t v, bool its_bool) {
@@ -100,16 +115,11 @@ static void print_codegen_indentation() {
 }
 
 llvalue_t llvm_op(int op, llvalue_t res1, llvalue_t res2) {
-    llvalue_t v;
-
     if (res1.kind == LLVALUE::CONST && res2.kind == LLVALUE::CONST) {
         return llvm_op_const(op, res1.val, res2.val);
     }
 
-    v.kind = LLVALUE::REG;
-
     long lhs = gen_reg();
-    v.reg = lhs;
     print_codegen_indentation();
     emit("%%%ld = ", lhs);
     switch (op) {
@@ -124,7 +134,7 @@ llvalue_t llvm_op(int op, llvalue_t res1, llvalue_t res2) {
     emit(", ");
     cgen_print_llvalue(res2);
     emit("\n");
-    return v;
+    return register_llv(lhs, {});
 }
 
 void cgen_print_lltype(Type *type) {
@@ -172,9 +182,7 @@ llvalue_t cgen_get_virtual_method(Type *base_obj_ty, llvalue_t base_obj, Method 
     print_codegen_indentation();
     // Load the pointer for the method.
     emit("%%%ld = load i8*, i8** %%%ld\n", vmethod_i8, gep);
-    llvalue_t vmethod;
-    vmethod.kind = LLVALUE::REG;
-    vmethod.reg = gen_reg();
+    llvalue_t vmethod = register_llv(gen_reg(), {});
     print_codegen_indentation();
     // Finally, bitcast this pointer to the type of the method.
     emit("%%%ld = bitcast i8* %%%ld to (", vmethod.reg, vmethod_i8);
@@ -191,7 +199,7 @@ llvalue_t cgen_get_virtual_method(Type *base_obj_ty, llvalue_t base_obj, Method 
 
 llvalue_t cgen_get_field_ptr(Local *field) {
     assert(field->kind == (int)LOCAL_KIND::FIELD);
-    llvalue_t reg0 = {LLVALUE::REG, (long)0};
+    llvalue_t reg0 = register_llv(0, {});
     llvalue_t ptr = reg0;
     if (field->offset) {
         // Move to the right offset
@@ -467,7 +475,7 @@ void cgen_start_method(Method *method, const char *class_name) {
         }
         // Initialize
         local->kind = (int)LOCAL_KIND::PARAM;
-        local->llval = {LLVALUE::REG, (long)local_reg_counter};
+        local->llval = register_llv(local_reg_counter, {});
         local->index = param_counter;
         ++local_reg_counter;
     }
@@ -489,7 +497,7 @@ void cgen_start_method(Method *method, const char *class_name) {
         local->kind = (int)LOCAL_KIND::VAR;
         local->index = var_counter;
         // Initialize all the values to 0.
-        local->llval = {LLVALUE::CONST, 0};
+        local->llval = const_llv(0, {});
     }
 
     llvm_label_t entry_lbl = llvm_label_t("entry");

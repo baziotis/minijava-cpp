@@ -1018,7 +1018,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             return this->type_table.undefined_type;
         }
         /// Codegen ///
-        __expr_context.llval = llvm_calloc(type, {LLVALUE::CONST, (int)type->sizeof_()});
+        __expr_context.llval = llvm_calloc(type, const_llv((int)type->sizeof_(), {}));
         /// End of Codegen ///
         return type;
     } break;
@@ -1047,12 +1047,12 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         if (len.kind == LLVALUE::CONST) {
             // Add 1 more element which is used to save the length.
             len.val += 1;
-            __expr_context.llval = llvm_calloc(int_arr_type, {LLVALUE::CONST,
-                                                   (int)(len.val * sizeof_int)});
+            __expr_context.llval = llvm_calloc(int_arr_type,
+                                               const_llv((int)(len.val * sizeof_int), {}));
         } else {
             // Add 1 more element which is used to save the length.
-            len = llvm_op('+', len, {LLVALUE::CONST, (int)1});
-            llvalue_t size = llvm_op('*', len, {LLVALUE::CONST, sizeof_int});
+            len = llvm_op('+', len, const_llv(1, {}));
+            llvalue_t size = llvm_op('*', len, const_llv(sizeof_int, {}));
             __expr_context.llval = llvm_calloc(int_arr_type, size);
         }
         /// End of Codegen ///
@@ -1188,7 +1188,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             llvm_branch(and_lbls.end);
             llvm_gen_lbl(and_lbls.end);
             __expr_context.llval = llvm_phi_node(this->type_table.bool_type,
-                                                 {LLVALUE::CONST, 0}, __expr_context.llval,
+                                                 const_llv(0, {}), __expr_context.llval,
                                                  origin_lbl, save_curr_lbl);
         } /* else {
             `__expr_context.llval` has the value generated
@@ -1327,7 +1327,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         } else {
             lbl_pair_t lbls_neg_check;
             lbls_neg_check.construct("bounds_neg");
-            llvalue_t cmp_res = llvm_op('<', index, {LLVALUE::CONST, 0});
+            llvalue_t cmp_res = llvm_op('<', index, const_llv(0, {}));
             llvm_branch_cond(cmp_res, lbls_neg_check.start, lbls_neg_check.end);
 
             llvm_gen_lbl(lbls_neg_check.start);
@@ -1336,7 +1336,7 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             llvm_gen_lbl(lbls_neg_check.end);
             // Note: As above, because we're indexing an i32*, the 4 bytes are
             // +1 offset.
-            index = llvm_op('+', index, {LLVALUE::CONST, (int)1});
+            index = llvm_op('+', index, const_llv(1, {}));
         }
         ptr = llvm_getelementptr_i32(ptr, index);
         __expr_context.llval = llvm_load(this->type_table.int_type, ptr);
@@ -1514,7 +1514,7 @@ void MainTypeCheckVisitor::visit(ArrayAssignmentStatement *arr_asgn_stmt) {
     if (index.kind == LLVALUE::CONST) {
         index.val += 1;
     } else {
-        index = llvm_op('+', index, {LLVALUE::CONST, (int)1});
+        index = llvm_op('+', index, const_llv(1, {}));
     }
     ptr = llvm_getelementptr_i32(ptr, index);
     assert(rhs_type == this->type_table.int_type);
@@ -2090,7 +2090,7 @@ void MainTypeCheckVisitor::visit(WhileStatement *while_stmt) {
     for (Local *local : locals) {
         previous_values.push(local->llval);
         // DUMB VALUE
-        new_assigned_values.push({LLVALUE::CONST, 0});
+        new_assigned_values.push(const_llv(0, {}));
     }
 
     /// Decide for which locals we have to make a phi node

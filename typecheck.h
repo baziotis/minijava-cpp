@@ -203,6 +203,11 @@ struct Type : public TypeCheckCustomAllocation {
     };
 };
 
+struct LLType {
+    const char *id;
+    int num_pointers = 0;
+};
+
 enum class LLVALUE {
     UNDEFINED,
     CONST,
@@ -210,34 +215,12 @@ enum class LLVALUE {
 };
 
 struct llvalue_t {
-    LLVALUE kind;
+    LLVALUE kind = LLVALUE::UNDEFINED;
+    LLType ty;
     union {
         long reg;
         int val;
     };
-
-    llvalue_t() { }
-
-
-    llvalue_t(bool _val) {
-        kind = LLVALUE::CONST;
-        val = (int) _val;
-    }
-
-    // TODO - IMPORTANT: This is a very bad design because the user
-    // has to specifically cast to `int` or `long`
-    // to disambiguate.
-
-    llvalue_t(LLVALUE _kind, int _val) {
-        assert(_kind == LLVALUE::CONST);
-        kind = _kind;
-        val = _val;
-    }
-    llvalue_t(LLVALUE _kind, long _reg) {
-        assert(_kind == LLVALUE::REG);
-        kind = _kind;
-        reg = _reg;
-    }
 };
 
 enum class LOCAL_KIND {

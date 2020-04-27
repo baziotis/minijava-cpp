@@ -1,9 +1,11 @@
 - SerializedHashTable should be used when order matters. However, I may have used
   it just because you can iterate over it. So, in this case we may want
   to just add an iterator to HashTable and use that.
+
 - poison_expr() has been introduced but it has not been tested.
   For example, when it was introduced, no changes occured
   in the test suite. Same for poison_stmt()
+
 - We can make a vector that does not need to have all the
   memory contiguous. We can allocate in list of blocks. In that
   way we don't need a general-purpose allocator that
@@ -13,11 +15,21 @@
   operator[] or iterators. Those can jump under the hood
   between blocks so that to the user, it seems like
   it's a contiguous array.
+
 - Because of the change in the computation of offsets
   (which was because we wanted to generate vtables),
   now we don't have an easy way to check for cyclic
   inheritance.
+
 - Maybe the vtable generation and all that copying,
   passing down the tree and serialized hash table
   stuff could be simplified with using
   sorting in some parts.
+
+- We made the "constructors" const_llv() and register_llv() but
+  we don't have a clear way to be sure that llvalue_t is
+  constructed only using those.
+
+- It might also be a good idea to make the members of llvalue_t
+  accessible only using member functions. Effectively to prevent
+  write access.
