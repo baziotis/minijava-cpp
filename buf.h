@@ -55,9 +55,20 @@ public:
     }
 
     void free() {
-        if(data != nullptr) free(data);
+        if(data != nullptr) ::free(data);
         len = 0;
         cap = 0;
+    }
+
+    Buf<T> deep_copy() {
+        Buf<T> copy(cap);
+        memcpy(copy.data, data, len * sizeof(T));
+        copy.len = len;
+        return copy;
+    }
+
+    void clear() {
+        len = 0;
     }
 
     const T& back() const { assert(len >= 1); return data[len-1]; }

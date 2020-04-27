@@ -58,6 +58,7 @@ struct SerializedHashTable {
 
 struct IdType;
 struct Type;
+struct VirtualTable;
 
 // A SerializedHashTable with just hardcoded the primitive types.
 struct TypeTable {
@@ -92,8 +93,7 @@ struct TypeTable {
     inline IdType** begin() { return type_table.begin(); }
     inline IdType** end() { return type_table.end(); }
 
-
-    void compute_and_print_offsets_for_type(IdType *type);
+    void compute_and_print_offsets_for_type(IdType *type, size_t start_fields, size_t start_methods, VirtualTable *vtable);
     void offset_computation();
 };
 
@@ -308,7 +308,9 @@ struct Method : public TypeCheckCustomAllocation {
     Buf<Statement*> stmts;
     Expression *ret_expr;
 
-    Method() = delete;
+    Method() { }
+
+    //Method() = delete;
     Method(MethodDeclaration *method_decl);
 
     void accept(MainTypeCheckVisitor *v, const char *class_name) {
@@ -320,30 +322,29 @@ struct Method : public TypeCheckCustomAllocation {
     }
 };
 
-enum class STATE {
-    UNRESOLVED,
-    RESOLVING,
-    RESOLVED
-};
+#include <new>
 
 struct IdType : public Type {
     const char *id;
     SerializedHashTable<Local*> fields;
     SerializedHashTable<Method*> methods;
     IdType *parent;
+    size_t __sizeof;
+    // Useful only for the virtual table generation
+    // (during the offset computation)
+    Array<IdType *, MEM::CHILDREN> *children;
 
-    size_t fields_end, methods_end;
-    STATE state;
-
-    IdType() : id(NULL), parent(NULL) { }
     // For type we've not processed yet (so, we know
     // only its id). But, clarify that it's undefined.
-    IdType(const char *_id) : Type(TY::UNDEFINED), id(_id), parent(NULL) { }
+    IdType(const char *_id) : Type(TY::UNDEFINED), id(_id), parent(NULL) {
+      create_children();
+    }
     // For type we're currently processing.
     IdType(const char *_id, size_t nfields, size_t nmethods) : 
         Type(TY::ID), id(_id), parent(NULL)
     {
         this->set_sizes(nfields, nmethods);
+        create_children();
     }
 
     void set_sizes(size_t nfields, size_t nmethods) {
@@ -362,7 +363,28 @@ struct IdType : public Type {
 
     size_t sizeof_() const {
         // +8 for the virtual pointer
-        return fields_end + 8;
+        return __sizeof + 8;
+    }
+
+    void create_children() {
+        // Every type can have at most 32 children. That can change,
+        // but it's generally realistic.
+        constexpr int max_children = 32;
+        using ArrType = Array<IdType *, MEM::CHILDREN>;
+        void *mem = allocate(sizeof(ArrType), MEM::CHILDREN);
+        children = new (mem) ArrType(max_children);
+    }
+
+    void add_child(IdType *child) {
+        assert(children);
+        children->push(child);
+    }
+
+    void invalidate_children() {
+        // We don't need to free, as we will free them all when MEM::VTABLE
+        // is free'd. We want to invalidate it though so that we don't
+        // use it accidentally.
+        children = NULL;
     }
 };
 

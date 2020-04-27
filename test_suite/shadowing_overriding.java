@@ -56,22 +56,6 @@ class E extends F {
   int a;
 }
 
-// ---------------------------
-// Method Overriding
-// ---------------------------
-
-class I {
-  public int foo(int a, int[] b) { return 3; }
-}
-
-class H extends I {
-  public int foo(int a) { return 2; }
-}
-
-class G extends H {
-  public int foo() { return 1; }
-}
-
 /// Make sure that there's no problem having
 /// same name in field and method.
 

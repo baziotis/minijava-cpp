@@ -15,6 +15,10 @@ enum class MEM {
                // gets de-allocated.
                // TODO: Locals and stuff could be saved there and not persist.
   VTABLE,      // Used only during the generation of vtables and then gets de-allocated.
+  CHILDREN,    // Used only during the generation of vtables and then gets de-allocated.
+               // But note that we can't use the same arena as above because this gets
+               // de-allocated every time we change inheritance tree (which means
+               // we would lose the children of the other inheritance trees).
   __LEN
 };
 

@@ -40,9 +40,9 @@ struct block_t {
 // TODO: Insert testing code that we match NARENAS
 // Holder of the first block which is empty. Used only to specify empty
 // arenas.
-block_t first[NARENAS]= { { NULL }, { NULL }, { NULL }, { NULL }, { NULL } };
+block_t first[NARENAS]= { { NULL }, { NULL }, { NULL }, { NULL }, { NULL }, { NULL }, { NULL } };
 // The actual arenas
-block_t *arena[NARENAS] = { &first[0], &first[1], &first[2], &first[3], &first[4] };
+block_t *arena[NARENAS] = { &first[0], &first[1], &first[2], &first[3], &first[4], &first[5], &first[6] };
 
 // List of free blocks. When an arena is free'd
 block_t *freeblocks;

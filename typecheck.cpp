@@ -45,6 +45,10 @@ static void typecheck_error(location_t __loc, Args... args) {
 }
 /* End of errors */
 
+// Used only in virtual table generation. It contains
+// the roots of inheritance trees.
+static Buf<IdType *> inher_roots;
+
 void typecheck_init() {
     set_indent_char('*');
 }
@@ -64,29 +68,6 @@ TypeTable install_type_declarations(Goal *goal) {
 void full_typecheck(Goal *goal, TypeTable type_table) {
     MainTypeCheckVisitor main_visitor(type_table);
     goal->accept(&main_visitor);
-}
-
-static bool params_match(Method *m1, Method *m2) {
-    if (m1->param_len != m2->param_len) return false;
-    size_t it = 0;
-    for (Local *p1 : m1->locals) {
-        if (it == m1->param_len) break;
-        Local *p2 = m2->locals[it];
-        if (p1->type != p2->type) return false;
-        ++it;
-    }
-    return true;
-}
-
-static void print_param_types(Method *method) {
-    size_t param_len = method->param_len;
-    for (size_t i = 0; i != param_len; ++i) {
-        Local *param = method->locals[i];
-        printf("%s", param->type->name());
-        if (i + 1 != param_len) {
-            printf(", ");
-        }
-    }
 }
 
 static Method *lookup_method_parent(const char *id, IdType *cls, IdType **ret_parent = NULL) {
@@ -116,62 +97,231 @@ static Method *lookup_method(const char *id, IdType *cls) {
     return lookup_method_parent(id, cls);
 }
 
-
-bool check_method_for_overrding(Method *method, IdType *type) {
-    IdType *parent;
-    Method *method_parent = lookup_method_parent(method->id, type, &parent);
-    if (method_parent) {
-        bool match = params_match(method, method_parent);
-        if (method_parent->ret_type != method->ret_type) {
-            // Note: If they _match exactly_ it is an error. Otherwise,
-            // it can be disambiguated through the parameters.
-            if (match) {
-                typecheck_error_no_ln(method->loc, method->id, "(");
-                print_param_types(method);
-                printf(") in `%s` can't override %s(", type->id, method_parent->id);
-                print_param_types(method_parent);
-                printf(") in `%s`\n", parent->id);
-                printf("  Mismatch in return types `%s` and `%s`\n",
-                       method->ret_type->name(), method_parent->ret_type->name());
-            }
-        } else if (match) {
-            method->offset = method_parent->offset;
-            return true;
-        }
+static bool params_match(Method *m1, Method *m2) {
+    if (m1->param_len != m2->param_len) return false;
+    size_t it = 0;
+    for (Local *p1 : m1->locals) {
+        if (it == m1->param_len) break;
+        Local *p2 = m2->locals[it];
+        if (p1->type != p2->type) return false;
+        ++it;
     }
-    return false;
+    return true;
 }
 
-void TypeTable::compute_and_print_offsets_for_type(IdType *type) {
-    assert(type);
-    if (type->state == STATE::RESOLVING) {
-        // We have cyclic inheritance.
-        typecheck_error_no_ln(type->loc, "Cyclic inheritance ",
-                        "involving: ");
-        // Iterate the inheritance tree and print the whole cycle.
-        IdType *runner = type;
-        while (runner->parent) {
-            printf("%s -> ", runner->id);
-            runner = runner->parent;
-            if (runner == type) {
-                // reached the start of the cycle again.
-                break;
+bool methods_have_same_signature(Method *m1, Method *m2) {
+    if (m1->ret_type != m2->ret_type)
+      return false;
+    return params_match(m1, m2);
+}
+
+static void print_param_types(Method *method) {
+    size_t param_len = method->param_len;
+    for (size_t i = 0; i != param_len; ++i) {
+        Local *param = method->locals[i];
+        printf("%s", param->type->name());
+        if (i + 1 != param_len) {
+            printf(", ");
+        }
+    }
+}
+
+constexpr ssize_t bucket_cap = 8;
+struct Bucket {
+    const char *method_ids[bucket_cap];
+    ssize_t indexes[bucket_cap];
+    Bucket *next;
+
+    Bucket() {
+      next = NULL;
+    }
+
+    static void *operator new(size_t size) {
+        return allocate(size, MEM::VTABLE);
+    }
+
+    void insert(const char *method_id, ssize_t index_in_serial_buf, ssize_t index_in_bucket) {
+        assert(index_in_bucket >= 0 && index_in_bucket < bucket_cap);
+        method_ids[index_in_bucket] = method_id;
+        indexes[index_in_bucket] = index_in_serial_buf;
+    }
+
+    ssize_t find(const char *id, ssize_t lim) const {
+        for (ssize_t i = 0; i <= lim; ++i) {
+            if (method_ids[i] == id) {
+              return indexes[i];
             }
         }
-        printf("%s\n", type->id);
-        return;
-    } else if (type->state == STATE::RESOLVED) {
-        // We have already processed this type, just return.
-        return;
+        return -1;
     }
-    type->state = STATE::RESOLVING;
+};
+
+struct FirstBucket {
+    Bucket b;
+    ssize_t nelems = 0;
+    Bucket *last_bucket;
+
+    FirstBucket() {
+        clear();
+    }
+
+    void insert(const char *method_id, ssize_t index_in_serial_buf) {
+        ssize_t index_in_bucket = nelems % bucket_cap;
+        if (nelems != 0 && index_in_bucket == 0) {
+            // It may have been allocated from a previous downward
+            // tree traversal.
+            Bucket *b;
+            if (last_bucket->next == NULL) {
+                b = new Bucket;
+                last_bucket->next = b;
+            } else {
+                b = last_bucket->next;
+            }
+            last_bucket = b;
+        }
+        last_bucket->insert(method_id, index_in_serial_buf, index_in_bucket);
+        nelems++;
+    }
+
+    ssize_t find(const char *id) const {
+        const Bucket *runner = &b;
+        ssize_t lim = bucket_cap;
+        ssize_t i = nelems;
+        while (i > 0) {
+            assert(runner);
+            ssize_t lim = bucket_cap - 1;
+            if (i < bucket_cap) {
+                lim = i - 1;
+            }
+            ssize_t ndx = runner->find(id, lim);
+            if (ndx >= 0) {
+              return ndx;
+            }
+            runner = runner->next;
+            i -= bucket_cap;
+        }
+        return -1;
+    }
+
+    void clear() {
+        nelems = 0;
+        b.next = NULL;
+        last_bucket = &b;
+    }
+};
+
+struct VMethod {
+    Method *method;
+    const char *enclosing;
+};
+
+struct RestorePair {
+    Bucket *last_bucket;
+    ssize_t nelems;
+};
+
+struct VirtualTable {
+    constexpr static size_t nbuckets = 32;
+    size_t nelems;
+    FirstBucket buckets[nbuckets];
+    Buf<VMethod> vmethods;
+
+    VirtualTable() {
+        vmethods.reserve(32);
+        nelems = 0;
+    }
+
+    inline ssize_t hash(const char *key) const {
+        // Note: We have asserted that the key is not NULL,
+        // by definition, which leads to a fast and good
+        // multiplicative hasing.
+
+        // Prime factor
+        uint32_t factor = 100001029;
+        // Non-zero key gets hashed
+        uint64_t h = (uint32_t) ((uintptr_t)key * factor);
+        h = ((h * (uint64_t) this->nbuckets) >> 32);
+        return (ssize_t) h;
+    }
+
+    // NOTE: We don't test for duplicates.
+    void insert(Method *method, const char *enclosing) {
+        assert(method);
+        // Keep index that it will be pushed in the serial buffer.
+        ssize_t index = vmethods.len;
+        vmethods.push({method, enclosing});
+        // Insert it into the table (giving it an index to keep
+        // in the serial buffer)
+        const char *method_id = method->id;
+        ssize_t val = this->hash(method_id);
+        buckets[val].insert(method_id, index);
+    }
+
+    // Note that for the specific usage of this
+    // table, when we search for something, if it is
+    // found, we want to replace it. But only want
+    // to replace the "value" part, i.e. the VMethod.
+    // That's why we return a pointer to that.
+    VMethod *find(const char *id) {
+        ssize_t val = this->hash(id);
+        ssize_t index = buckets[val].find(id);
+        if (index == -1) {
+            return NULL;
+        }
+        return &vmethods[index];
+    }
+
+    void clear() {
+        nelems = 0;
+        vmethods.clear();
+        for (ssize_t i = 0; i < nbuckets; ++i) {
+            buckets[i].clear();
+        }
+        deallocate(MEM::VTABLE);
+    }
+
+    void save_first_buckets(RestorePair arr[VirtualTable::nbuckets]) {
+        for (ssize_t i = 0; i < VirtualTable::nbuckets; ++i) {
+            arr[i].nelems = buckets[i].nelems;
+            arr[i].last_bucket = buckets[i].last_bucket;
+        }
+    }
+
+    void restore_first_buckets(RestorePair arr[VirtualTable::nbuckets]) {
+        for (ssize_t i = 0; i < VirtualTable::nbuckets; ++i) {
+            buckets[i].nelems = arr[i].nelems;
+            buckets[i].last_bucket = arr[i].last_bucket;
+        }
+    }
+};
+
+bool check_method_for_overriding(Method *method, IdType *type, VirtualTable *vtable) {
+    VMethod *vmethod = vtable->find(method->id);
+    if (!vmethod) {
+      return false;
+    }
+    Method *method_parent = vmethod->method;
+    assert(method_parent);
+    if (!methods_have_same_signature(method, method_parent)) {
+        typecheck_error_no_ln(method->loc, method->ret_type->name(), " ", method->id, "(");
+        print_param_types(method);
+        printf(") in `%s` can't override %s %s(", type->id, method_parent->ret_type->name(),
+               method_parent->id);
+        print_param_types(method_parent);
+        printf(") in `%s`\n", vmethod->enclosing);
+        return false;
+    }
+    vmethod->enclosing = type->id;
+    method->offset = method_parent->offset;
+    return true;
+}
+
+void TypeTable::compute_and_print_offsets_for_type(IdType *type, size_t start_fields, size_t start_methods, VirtualTable *vtable) {
+    if (type == NULL) {
+      return;
+    }
     IdType *parent = type->parent;
-    size_t start_fields = 0;
-    size_t start_methods = 0;
     if (parent) {
-        compute_and_print_offsets_for_type(parent);
-        start_fields = parent->fields_end;
-        start_methods = parent->methods_end;
         // Inherits, so include the parent at the start of the type.
         emit("%%class.%s = type { %%class.%s", type->id, parent->id);
     } else {
@@ -185,13 +335,14 @@ void TypeTable::compute_and_print_offsets_for_type(IdType *type) {
     int num_methods = start_methods / 8;
     size_t running_offset = start_methods;
     for (Method *method: type->methods) {
-        if (!check_method_for_overrding(method, type)) {
+        if (!check_method_for_overriding(method, type, vtable)) {
             if (config.offsets) {
                 printf("%s.%s: %zd\n", type->id, method->id, running_offset);
             }
             method->offset = running_offset;
             running_offset += 8;
             ++num_methods;
+            vtable->insert(method, type->id);
         }
     }
     size_t methods_size = running_offset - start_methods;
@@ -224,25 +375,74 @@ void TypeTable::compute_and_print_offsets_for_type(IdType *type) {
 
     size_t fields_size = running_offset - start_fields;
 
-    type->fields_end = start_fields + fields_size;
-    type->methods_end = start_methods + methods_size;
-    type->state = STATE::RESOLVED;
+    start_fields = start_fields + fields_size;
+    type->__sizeof = start_fields;
+    start_methods = start_methods + methods_size;
+
+    /*
+    if (
+    printf("\nVTable for %s\n", type->id);
+    printf("------\n");
+    Buf<VMethod> vmethods = vtable->vmethods;
+    for (VMethod vmethod : vmethods) {
+        printf("%s__%s\n", vmethod.enclosing, vmethod.method->id);
+    }
+    */
+    
+    assert(type->children);
+    auto children = *(type->children);
+    size_t len = children.len;
+    if (len) {
+        Buf<VMethod> deep_copy;
+        // We only need deep copy for more than one children.
+        RestorePair save[VirtualTable::nbuckets];
+        if (len > 1) {
+            deep_copy = vtable->vmethods.deep_copy();
+            vtable->save_first_buckets(save);
+        }
+        compute_and_print_offsets_for_type(children[0], start_fields, start_methods, vtable);
+        if (len > 1) {
+            for (ssize_t index = 1; index < len; ++index) {
+                vtable->vmethods = deep_copy;
+                vtable->restore_first_buckets(save);
+                IdType *child = children[index];
+                compute_and_print_offsets_for_type(child, start_fields, start_methods, vtable);
+                vtable->vmethods.free();
+                if (index != len - 1) {
+                    deep_copy = vtable->vmethods.deep_copy();
+                }
+            }
+        }
+    }
+
+    type->invalidate_children();
 }
 
 void TypeTable::offset_computation() {
-    for (IdType *type : type_table) {
-        compute_and_print_offsets_for_type(type);
+    VirtualTable vtable;
+    for (IdType *type : inher_roots) {
+        //printf("-- Inheritance root: %s -- \n\n", type->id);
+        constexpr size_t start_fields = 0;
+        constexpr size_t start_methods = 0;
+        compute_and_print_offsets_for_type(type, start_fields, start_methods, &vtable);
+        vtable.clear();
+        //printf("\n");
     }
+    deallocate(MEM::CHILDREN);
     emit("\n");
 }
 
 bool typecheck(Goal *goal) {
     typecheck_init();
+    constexpr int approximated_num_of_classes_per_inheritance_tree = 8;
+    inher_roots.reserve(goal->type_decls.len /
+                        approximated_num_of_classes_per_inheritance_tree);
     // Pass 1
     TypeTable type_table = install_type_declarations(goal);
     if (config.log) {
         printf("\n");
     }
+
     // TODO: How able we are to continue?
     // Print types that could not be inserted. This can
     // happen if the types used are more than the type
@@ -396,6 +596,9 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
     if (type_decl->extends) {
         IdType *parent = this->id_to_type(type_decl->extends, type_decl->loc);
         type->set_parent(parent);
+        parent->add_child(type);
+    } else {
+        inher_roots.push(type);
     }
     for (LocalDeclaration *ld : type_decl->vars) {
         // Check redefinition in fields.

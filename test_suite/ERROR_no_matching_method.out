@@ -1,4 +1,5 @@
 A.test: 0
 B.foo: 0
+ERROR_no_matching_method.java: 19:  Semantic Error: int foo(int) in `C` can't override int foo(boolean) in `B`
 C.foo: 8
 ERROR_no_matching_method.java: 10:  Semantic Error: No matching method with id: `foo`

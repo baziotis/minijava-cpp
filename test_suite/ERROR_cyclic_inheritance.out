@@ -1,2 +1,0 @@
-ERROR_cyclic_inheritance.java: 10:  Semantic Error: Cyclic inheritance involving: A -> B -> A
-ERROR_cyclic_inheritance.java: 20:  Semantic Error: Cyclic inheritance involving: C -> E -> D -> C

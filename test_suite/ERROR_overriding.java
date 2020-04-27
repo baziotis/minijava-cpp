@@ -8,10 +8,20 @@ class B {
 }
 
 // Invalid overloading
-// The return types don't match so the
-// parameters (and their types) should
-// not match as well so they can be
-// disambiguated.
+// The return types don't match.
 class A extends B {
   public int overriden(int a) { return 1; }
+}
+
+// The parameter types don't match.
+class I {
+  public int foo(int a, int[] b) { return 3; }
+}
+
+class H extends I {
+  public int foo(int a) { return 2; }
+}
+
+class G extends H {
+  public int foo() { return 1; }
 }

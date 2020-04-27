@@ -1,4 +1,8 @@
 B.overriden: 0
-ERROR_overriding.java: 16:  Semantic Error: overriden(int) in `A` can't override overriden(int) in `B`
-  Mismatch in return types `int` and `int[]`
+ERROR_overriding.java: 13:  Semantic Error: int overriden(int) in `A` can't override int[] overriden(int) in `B`
 A.overriden: 8
+I.foo: 0
+ERROR_overriding.java: 22:  Semantic Error: int foo(int) in `H` can't override int foo(int, int[]) in `I`
+H.foo: 8
+ERROR_overriding.java: 26:  Semantic Error: int foo() in `G` can't override int foo(int, int[]) in `I`
+G.foo: 16

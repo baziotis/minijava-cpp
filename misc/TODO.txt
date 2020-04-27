@@ -4,3 +4,20 @@
 - poison_expr() has been introduced but it has not been tested.
   For example, when it was introduced, no changes occured
   in the test suite. Same for poison_stmt()
+- We can make a vector that does not need to have all the
+  memory contiguous. We can allocate in list of blocks. In that
+  way we don't need a general-purpose allocator that
+  can allocate continuous block of any size. The only
+  limitation of that is that the user needs to access
+  elements only through well-defined interface like
+  operator[] or iterators. Those can jump under the hood
+  between blocks so that to the user, it seems like
+  it's a contiguous array.
+- Because of the change in the computation of offsets
+  (which was because we wanted to generate vtables),
+  now we don't have an easy way to check for cyclic
+  inheritance.
+- Maybe the vtable generation and all that copying,
+  passing down the tree and serialized hash table
+  stuff could be simplified with using
+  sorting in some parts.

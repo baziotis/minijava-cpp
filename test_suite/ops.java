@@ -40,15 +40,15 @@ class A {
     c = new C();
     return (((29347 + (this.t2())) < 12) &&
             (((a < (arr[0])) && (this.t3())) &&
-             (this.t6(this.t4((new B().test(c.test(true)))[0], arr),
+             (this.t6(this.t4((new B().test(true))[0], arr),
                       new int[arr[0]]))));
   }
 }
 
 class C {
-  public int test(boolean a) { return 1; }
+  public int[] test(boolean a) { return new int[10]; }
 }
 
 class B extends C {
-  public int[] test(int i) { return new int[i]; }
+  public int[] test2(int i) { return new int[i]; }
 }
