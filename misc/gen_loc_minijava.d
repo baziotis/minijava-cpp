@@ -52,15 +52,15 @@ class A%d {
     c = new C%d();
     return (((29347 + (this.t2())) < 12) &&
             (((a < (arr[0])) && (this.t3())) &&
-             (this.t6(this.t4((new B%d().test(c.test(true)))[0], arr),
+             (this.t6(this.t4((new B%d().test(true))[0], arr),
                       new int[arr[0]]))));
   }
 }
 class C%d {
-  public int test(boolean a) { return 1; }
+  public int[] test(boolean a) { return new int[10]; }
 }
 class B%d extends C%d {
-  public int[] test(int i) { return new int[i]; }
+  public int[] test2(int i) { return new int[i]; }
 }
 ";
   
@@ -70,6 +70,6 @@ class B%d extends C%d {
 
   const(char*) strz = toStringz(str);
   for (int i = 0; i < iterations; ++i) {
-    printf(strz, i, i, i, i, i, i, i, i);
+    printf(strz, i, i, i, i, i, i, i, i, i);
   }
 }
