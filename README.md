@@ -1,6 +1,6 @@
 ﻿# MiniJava Compiler in C++ (from scratch)
 
-A compiler from MiniJava ([Grammar](http://cgi.di.uoa.gr/~thp06/project_files/minijava-new/minijava.html#prod4)) to [LLVM IR](https://llvm.org/docs/LangRef.html) written in (simple) C++. To the best of my knowledge, this is the fastest Minijava (to LLVM IR) compiler.
+A compiler from MiniJava ([Grammar](http://cgi.di.uoa.gr/~thp06/project_files/minijava-new/minijava.html#prod4)) to [LLVM IR](https://llvm.org/docs/LangRef.html) written in (simple) C++. **To the best of my knowledge, this is the fastest Minijava (to LLVM IR) compiler.**
 
 # Description
 
