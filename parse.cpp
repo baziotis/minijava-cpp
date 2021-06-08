@@ -9,7 +9,7 @@ extern token_t token;
 
 static bool EOI_has_been_found;
 
-static const char *main_;
+const char *main_method_string;
 static const char *length_;
 
 static bool is_token(TOK kind) {
@@ -392,8 +392,7 @@ static Statement *parse_stmt() {
             s2 = arr_as;
         } else {
             // Make a poinsoned statement
-            syntax_error("Expected eiter `=` or `[` following id: ", id,
-                         " in assignment statement");
+            syntax_error("Expected either `=` or `[` following id: `", id, "`");
             goto Lerror;
         }
         s = s2;
@@ -584,7 +583,7 @@ static MainClass parse_main_class() {
             expect_token_in_rule(TOK::PUBLIC, "MainClass declaration");    // "public"
             expect_token_in_rule(TOK::STATIC, "MainClass declaration");    // "static"
             expect_token_in_rule(TOK::VOID, "MainClass declaration");      // "void"
-            if (!is_token(TOK::ID) || token.id != main_) {
+            if (!is_token(TOK::ID) || token.id != main_method_string) {
                 syntax_error("Expected identifier `main` in MainClass declaration to"
                              " start the declaration of the main method.");
                 goto Lerror;
@@ -786,7 +785,7 @@ void parse_init(const char *file_contents, const char *filename) {
     lexer_init(file_contents, filename);
     // TODO: Move this to some general initialization.
     EOI_has_been_found = false;
-    main_ = str_intern("main");
+    main_method_string = str_intern("main");
     length_ = str_intern("length");
     set_indent_char('-');
 }

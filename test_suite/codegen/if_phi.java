@@ -1,11 +1,11 @@
 // -unused -no-style -codegen
 class Main {
-    public static void main(String[] a) { }
-}
-
-class A {
-    public int foo(boolean cond) {
+    public static void main(String[] args) {
         int a;
+        boolean cond;
+        A aa;
+        
+        cond = true;
         a = 7;
         if (cond) {
             if (cond) {
@@ -13,44 +13,29 @@ class A {
             } else {}
         } else {
         }
-        return a;
-    }
+        // Should be reduced to just 2.
+        System.out.println(a);
 
-    public int bar(boolean cond) {
-        int a;
-        a = 7;
-        if (cond) {
-            if (cond) {
-            } else {
-                a = 2;
-            }
-        } else {
-        }
-        return a;
+        aa = new A();
+        a = aa.fa();
+        System.out.println(a); // 4
     }
+}
 
-    public int fa(boolean cond) {
+class A {
+
+    public int fa() {
+        boolean cond;
         int a;
+
+        cond = false;
         a = 7;
         if (cond) {
             a = 3;
         } else {
             a = 4;
         }
+        // Should be reduced to just 4.
         return a;
-    }
-
-    public int test1(boolean cond) {
-        A a;
-        a = new A();
-        if (cond) {
-            a = new A();
-        } else {
-            if (cond) {
-            } else {
-                a = new A();
-            }
-        }
-        return 5;
     }
 }

@@ -67,7 +67,28 @@ void emit(const char *fmt, ...) {
 
 void cgen_init() {
   if (config.codegen) {
-    printf("declare i8* @calloc(i32, i32)\n\n");
+
+    printf(
+"declare i8* @calloc(i32, i32)\n"
+"declare i32 @printf(i8*, ...)\n"
+"declare void @exit(i32)\n"
+"\n"
+"@_cint = constant [4 x i8] c\"%%d\\0a\\00\"\n"
+"@_cOOB = constant [15 x i8] c\"Out of bounds\\0a\\00\"\n"
+"define void @print_int(i32 %%i) {\n"
+"    %%_str = bitcast [4 x i8]* @_cint to i8*\n"
+"    call i32 (i8*, ...) @printf(i8* %%_str, i32 %%i)\n"
+"    ret void\n"
+"}\n"
+"\n"
+"define void @throw_oob() {\n"
+"    %%_str = bitcast [15 x i8]* @_cOOB to i8*\n"
+"    call i32 (i8*, ...) @printf(i8* %%_str)\n"
+"    call void @exit(i32 1)\n"
+"    ret void\n"
+"}\n\n"
+);
+
   }
 }
 
@@ -114,6 +135,13 @@ static void print_codegen_indentation() {
     }
 }
 
+void cgen_print_stmt(llvalue_t to_print) {
+  print_codegen_indentation();
+  emit("call void @print_int(i32 ");
+  cgen_print_llvalue(to_print);
+  emit(")\n");
+}
+
 llvalue_t llvm_op(int op, llvalue_t res1, llvalue_t res2) {
     if (res1.kind == LLVALUE::CONST && res2.kind == LLVALUE::CONST) {
         return llvm_op_const(op, res1.val, res2.val);
@@ -144,12 +172,28 @@ void cgen_print_lltype(Type *type) {
     case TY::ARR: emit("i32*"); break;
     case TY::ID:
     {
-        IdType *idtype = (IdType*) type;
-        assert(idtype->is_IdType());
-        emit("%%class.%s*", idtype->id);
+        emit("i8*");
     } break;
     default: assert(0);
     }
+}
+
+void emit_vmethod_signature(Type *base_obj_ty, Method *method) {
+    cgen_print_lltype(method->ret_type);
+    // Print "this" pointer
+    emit(" (i8*");
+    //cgen_print_lltype(base_obj_ty);
+    if (method->param_len) {
+      emit(", ");
+    }
+    for (size_t i = 0; i != method->param_len; ++i) {
+        Local *param = method->locals[i];
+        cgen_print_lltype(param->type);
+        if (i != method->param_len - 1) {
+            emit(", ");
+        }
+    }
+    emit(")*");
 }
 
 llvalue_t cgen_get_virtual_method(Type *base_obj_ty, llvalue_t base_obj, Method *method) {
@@ -159,9 +203,8 @@ llvalue_t cgen_get_virtual_method(Type *base_obj_ty, llvalue_t base_obj, Method 
     // Bitcast the object pointer to i8***.
     // Note that the vptr is a i8**. So, with this bitcast,
     // and just loading a i8**, we get the vptr.
-    emit("%%%ld = bitcast ", i8ppp);
-    cgen_print_lltype(base_obj_ty);
-    emit(" %%%ld to i8***\n", base_obj.reg);
+    emit("%%%ld = bitcast i8* ", i8ppp);
+    emit("%%%ld to i8***\n", base_obj.reg);
     long vptr = gen_reg();
     print_codegen_indentation();
     // Get the vptr
@@ -175,7 +218,7 @@ llvalue_t cgen_get_virtual_method(Type *base_obj_ty, llvalue_t base_obj, Method 
         // offset / 8 because the type is i8**. So, a pointer
         // and because GEP works like C pointers, +1 in a pointer
         // is +8 actual.
-        emit("%%%ld = getelementptr i8*, i8** %%%ld, %zd\n",
+        emit("%%%ld = getelementptr i8*, i8** %%%ld, i32 %zd\n",
              gep, vptr, offset / 8);
     }
     long vmethod_i8 = gen_reg();
@@ -185,15 +228,9 @@ llvalue_t cgen_get_virtual_method(Type *base_obj_ty, llvalue_t base_obj, Method 
     llvalue_t vmethod = register_llv(gen_reg(), {});
     print_codegen_indentation();
     // Finally, bitcast this pointer to the type of the method.
-    emit("%%%ld = bitcast i8* %%%ld to (", vmethod.reg, vmethod_i8);
-    for (size_t i = 0; i != method->param_len; ++i) {
-        Local *param = method->locals[i];
-        cgen_print_lltype(param->type);
-        if (i != method->param_len - 1) {
-            emit(", ");
-        }
-    }
-    emit(")*\n");
+    emit("%%%ld = bitcast i8* %%%ld to ", vmethod.reg, vmethod_i8);
+    emit_vmethod_signature(base_obj_ty, method);
+    emit("\n");
     return vmethod;
 }
 
@@ -201,10 +238,8 @@ llvalue_t cgen_get_field_ptr(Local *field) {
     assert(field->kind == (int)LOCAL_KIND::FIELD);
     llvalue_t reg0 = register_llv(0, {});
     llvalue_t ptr = reg0;
-    if (field->offset) {
-        // Move to the right offset
-        ptr = llvm_getelementptr_i8(reg0, field->offset);
-    }
+    int account_for_vptr = field->offset + 8;
+    ptr = llvm_getelementptr_i8(reg0, account_for_vptr);
     return llvm_bitcast_from_i8p(field->type, ptr);
 }
 
@@ -230,13 +265,28 @@ llvalue_t llvm_bitcast_from_i8p(Type *type, llvalue_t ptr) {
     } break;
     case TY::ID:
     {
-        IdType *idtype = (IdType*) type;
-        assert(idtype->is_IdType());
-        emit("%%%ld = bitcast i8* %%%ld to %%class.%s**\n", v.reg, ptr.reg, idtype->id);
+        emit("%%%ld = bitcast i8* %%%ld to i8**\n", v.reg, ptr.reg);
     } break;
     default: assert(0);
     }
     return v;
+}
+
+llvalue_t llvm_bitcast_i8p_to_i8ppp(llvalue_t i8p) {
+  llvalue_t i8ppp = register_llv(gen_reg(), {});
+  print_codegen_indentation();
+  emit("%%%ld = bitcast i8* %%%ld to i8***\n", i8ppp.reg, i8p.reg);
+  return i8ppp;
+}
+
+
+void cgen_store_vptr(llvalue_t i8ppp, IdType *type) {
+  llvalue_t i8pp_to_vtable = register_llv(gen_reg(), {});
+  print_codegen_indentation();
+  emit("%%%ld = bitcast [%ld x i8*]* @.%s to i8**\n", i8pp_to_vtable.reg,
+       type->vmethods_len, type->id);
+  print_codegen_indentation();
+  emit("store i8** %%%ld, i8*** %%%ld\n", i8pp_to_vtable.reg, i8ppp.reg);
 }
 
 llvalue_t llvm_getelementptr_i32(llvalue_t ptr, llvalue_t index) {
@@ -281,10 +331,7 @@ llvalue_t llvm_load(Type *type, llvalue_t ptr) {
     } break;
     case TY::ID:
     {
-        IdType *idtype = (IdType*) type;
-        assert(idtype->is_IdType());
-        emit("%%%ld = load %%class.%s*, %%class.%s** %%%ld, align 8\n", v.reg,
-             idtype->id, idtype->id, ptr.reg);
+        emit("%%%ld = load i8*, i8** %%%ld\n", v.reg, ptr.reg);
     } break;
     default: assert(0);
     }
@@ -300,34 +347,19 @@ llvalue_t not_llvalue(llvalue_t v) {
     return v;
 }
 
-llvalue_t llvm_calloc(Type *type, llvalue_t sz) {
-    long reg_calloc = gen_reg();
+llvalue_t llvm_calloc(llvalue_t sz) {
+    llvalue_t v = register_llv(gen_reg(), {});
     print_codegen_indentation();
     if (sz.kind == LLVALUE::CONST) {
-        emit("%%%ld = call noalias i8* @calloc(i32 1, i32 %d)\n", reg_calloc, sz.val);
+        emit("%%%ld = call noalias i8* @calloc(i32 1, i32 %d)\n", v.reg, sz.val);
     } else {
-        emit("%%%ld = call noalias i8* @calloc(i32 1, i32 %%%ld)\n", reg_calloc, sz.reg);
-    }
-    llvalue_t v;
-    v.kind = LLVALUE::REG;
-    v.reg = gen_reg();
-    // Generate the bitcast
-    print_codegen_indentation();
-    IdType *idtype = type->is_IdType();
-    if (idtype) {
-        emit("%%%ld = bitcast i8* %%%ld to %%class.%s*\n", v.reg, reg_calloc, idtype->id);
-    } else if (type->kind == TY::ARR) {
-        emit("%%%ld = bitcast i8* %%%ld to i32*\n", v.reg, reg_calloc);
-    } else {
-        assert(0);
+        emit("%%%ld = call noalias i8* @calloc(i32 1, i32 %%%ld)\n", v.reg, sz.reg);
     }
     return v;
 }
 
 void llvm_gen_lbl(llvm_label_t l) {
-    assert(!l.generated);
     emit("%s:\n", l.lbl);
-    l.generated = true;
     __expr_context.curr_lbl = l;
 }
 
@@ -378,12 +410,11 @@ llvalue_t llvm_call(Type *ret_type, Type *base_obj_ty, llvalue_t base_obj,
     emit(" ");  // space
     assert(vmethod.kind == LLVALUE::REG);
     // Print the register that points to the vmethod
-    emit("%%%ld(", vmethod.reg);
-    // Pass base object as first implicit param.
-    cgen_print_lltype(base_obj_ty);
-    emit(" ");
+    emit("%%%ld(i8* ", vmethod.reg);
     cgen_print_llvalue(base_obj);
-    emit(", ");
+    if (types.len) {
+      emit(", ");
+    }
     // Print the types of args along with the args themselves
     // as a comma-separate list
     assert(types.len == values.len);
@@ -444,12 +475,17 @@ void llvm_store(Type *type, llvalue_t value, llvalue_t ptr) {
     emit("\n");
 }
 
-void cgen_start_method(Method *method, const char *class_name) {
+void cgen_start_method(Method *method, const char *class_name, bool is_main_method) {
     reset_lbl();
     // Emit function prototype
     emit("define ");
     cgen_print_lltype(method->ret_type);
-    emit(" @%s__%s(", class_name, method->id);
+
+    if (!is_main_method) {
+      emit(" @%s__%s(", class_name, method->id);
+    } else {
+      emit(" @main(", class_name, method->id);
+    }
     
     // Emit `this` pointer.
     size_t param_len = method->param_len;
@@ -504,7 +540,10 @@ void cgen_start_method(Method *method, const char *class_name) {
     llvm_gen_lbl(entry_lbl);
 }
 
-void cgen_end_method() {
+void cgen_end_method(bool is_main_method) {
+    if (is_main_method) {
+      emit("    ret i32 0\n");
+    }
     emit("}\n\n");
 }
 

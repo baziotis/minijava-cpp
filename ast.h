@@ -232,6 +232,9 @@ struct WhileStatement : public Statement {
     Expression *cond;
     Statement *body;
 
+    // Set by type-checking
+    const char *pred_lbl = NULL, *last_lbl = NULL;
+
     WhileStatement() {
         kind = STMT::WHILE;
     }
@@ -372,6 +375,8 @@ struct TypeDeclaration : public ParsingTemporaryAllocation {
         v->visit(this);
     }
 };
+
+extern const char *main_method_string;
 
 struct MainClass : public ParsingPersistentAllocation {
     location_t loc;

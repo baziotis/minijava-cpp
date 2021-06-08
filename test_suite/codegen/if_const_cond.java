@@ -8,11 +8,12 @@ class Main {
 // no branch should be generated because we know
 // what body will be executed at compile-time).
 // Essentialy, this is a type of dead code elimination
-// on essentially on the AST level.
+// on the AST level.
 class A {
     public int foo() {
         int a;
-        if (1 < 2) {
+        a = 1;
+        if (a < 2) {
             a = 2;
         } else {  // this should be completely elided
             a = 3;
@@ -32,17 +33,5 @@ class A {
             arr[2] = 2;
         }
         return 2;
-    }
-
-    public int fa() {
-        int a;
-        a = 1;
-        // True constant condition
-        if (1 < 2) {
-            a = 3;
-        } else {  // This should be completely elided
-            a = 4;
-        }
-        return a;
     }
 }

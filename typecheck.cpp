@@ -352,15 +352,21 @@ void TypeTable::compute_and_print_offsets_for_type(IdType *type, size_t start_fi
     type->__sizeof = start_fields;
     start_methods = start_methods + methods_size;
 
-    /*
-    if (
-    printf("\nVTable for %s\n", type->id);
-    printf("------\n");
     Buf<VMethod> vmethods = vtable->vmethods;
-    for (VMethod vmethod : vmethods) {
-        printf("%s__%s\n", vmethod.enclosing, vmethod.method->id);
+    type->vmethods_len = vmethods.len;
+    emit("@.%s = global [%d x i8*]\n[\n", type->id, vmethods.len);
+    ssize_t i = 0;
+    for (ssize_t i = 0; i < vmethods.len; ++i) {
+        VMethod vmethod = vmethods[i];
+        emit("i8* bitcast (");
+        emit_vmethod_signature(type, vmethod.method); 
+        emit(" @%s__%s to i8*)", vmethod.enclosing, vmethod.method->id);
+        if (i != vmethods.len - 1) {
+            emit(",");
+        }
+        emit("\n");
     }
-    */
+    emit("]\n");
     
     assert(type->children);
     auto children = *(type->children);
@@ -408,7 +414,9 @@ void TypeTable::offset_computation() {
 bool typecheck(Goal *goal) {
     typecheck_init();
     constexpr int approximated_num_of_classes_per_inheritance_tree = 8;
-    inher_roots.reserve(goal->type_decls.len /
+    // +1 for the main class
+    int type_decls_len = goal->type_decls.len + 1;
+    inher_roots.reserve(type_decls_len /
                         approximated_num_of_classes_per_inheritance_tree);
     // Pass 1
     TypeTable type_table = install_type_declarations(goal);
@@ -502,7 +510,8 @@ void TypeTable::insert(const char *id, IdType* v) {
 DeclarationVisitor::DeclarationVisitor(size_t ntype_decls) {
     // IMPORTANT: Before installing a type, the user
     // is responsible for checking if it exists.
-    this->type_table.initialize(ntype_decls);
+    // +1 for the main class
+    this->type_table.initialize(ntype_decls + 1);
 }
 
 void DeclarationVisitor::visit(Goal *goal) {
@@ -517,6 +526,20 @@ void DeclarationVisitor::visit(Goal *goal) {
 void DeclarationVisitor::visit(MainClass *main_class) {
     LOG_SCOPE;
     debug_print("Pass1::MainClass: %s\n", main_class->id);
+    // Assert that we visit this first i.e., no types have been created
+    assert(this->type_table.len_inserted() == 0);
+    IdType *main_cls_type = new IdType(main_class->id,
+                                       /* nfields = */ 0,
+                                       /* nmethods = */ 0);
+    main_cls_type->loc = main_class->loc;
+
+    this->type_table.main_cls_type = main_cls_type;
+    this->type_table.insert(main_class->id, main_cls_type);
+    inher_roots.push(main_cls_type);
+
+    // Construct a custom method for `main()`
+    Method *main_method = Method::construct_main_method(this, main_class);
+    this->type_table.main_method = main_method;
 }
 
 // Note - IMPORTANT: 
@@ -595,9 +618,6 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
             field = ld->accept(this);
             field->kind = (int)LOCAL_KIND::FIELD;
             type->fields.insert(field->id, field);
-            /// Codegen ///
-            
-            /// End of Codegen ///
         }
     }
     for (MethodDeclaration *md : type_decl->methods) {
@@ -606,14 +626,12 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
         // - A method must not conflict with a method of the current class.
         // - A method must not conflict with a field of the current class.
         // - A method can conflict with a method of the parent class:
-        //   -- If the methods have the same return type (but possibly different formal
-        //      parameters), it's valid overriding.
-        //   -- Otherwise, if the methods have different return types but the types
-        //      of the parameters don't match _exactly_, then it's valid
-        //      overriding.
+        //   -- If the methods have the same return type and the _same_
+        //      parameters, then it's valid overriding.
         //   -- Otherwise, it's an error.
         //   We CAN'T check this in the first pass as it is possible that
-        //   we have not processed the parent type yet.
+        //   we have not processed the parent type yet. Note that we don't
+        //   check this at the typecheck visitor but at the offset computation.
         // - A method can conflict with a field of the parent 
         //   but that's NOT an error.  Because it is disambiguated in what
         //   we refer to by the way we dereference.
@@ -626,7 +644,6 @@ void DeclarationVisitor::visit(TypeDeclaration *type_decl) {
                             "a method");
         } else {
             method = md->accept(this);
-            //method->print();
             assert(method);
             assert(method->id);
             type->methods.insert(method->id, method);
@@ -642,6 +659,12 @@ Local *DeclarationVisitor::visit(LocalDeclaration *local_decl) {
     assert(!local_decl->is_undefined());
     print_indentation();
     debug_log(local_decl->loc, "LocalDeclaration: ", local_decl->id, "\n");
+    if (local_decl->typespec.id != NULL
+        && local_decl->typespec.id == this->type_table.main_cls_type->id)
+    {
+        typecheck_error(local_decl->loc, "You can't declare a local of type of",
+                        " the main class.");
+    }
     Type *type = typespec_to_type(local_decl->typespec, local_decl->loc);
     Local *local = new Local(local_decl->id, type);
     return local;
@@ -712,7 +735,10 @@ void MainTypeCheckVisitor::visit(Goal *goal) {
 
 void MainTypeCheckVisitor::visit(MainClass *main_class) {
     LOG_SCOPE;
-    //debug_print("MainTypeCheck::MainClass\n");
+    debug_print("MainTypeCheck::MainClass\n");
+    this->curr_class = this->type_table.main_cls_type;
+    this->type_table.main_method->accept(this, this->curr_class->id);
+    this->curr_class = NULL;
 }
 
 void MainTypeCheckVisitor::visit(IdType *type) {
@@ -750,6 +776,21 @@ static bool compatible_types(Type *lhs, Type *rhs) {
 
 extern ExprContext __expr_context;
 
+static bool type_transitively_extends_Main(MainTypeCheckVisitor *visitor,
+                                           const char *class_name) {
+  IdType *type = visitor->type_table.find(class_name);
+  const char *main_cls_id = visitor->type_table.main_cls_type->id;
+  assert(type);
+  IdType *parent = type->parent;
+  while (parent != NULL) {
+    if (parent->id == main_cls_id) {
+      return true;
+    }
+    parent = parent->parent;
+  }
+  return false;
+}
+
 void MainTypeCheckVisitor::visit(Method *method, const char *class_name) {
     LOG_SCOPE;
     debug_print("MainTypeCheck::Method %s\n", method->id);
@@ -757,14 +798,35 @@ void MainTypeCheckVisitor::visit(Method *method, const char *class_name) {
 
     __expr_context.method = method;
 
-    cgen_start_method(method, class_name);
+    bool is_main_method = method->id == main_method_string;
+
+    cgen_start_method(method, class_name, is_main_method);
+
+    if (is_main_method && type_transitively_extends_Main(this, class_name))
+    {
+        typecheck_error(method->loc, "In type: `", class_name,
+                        "` you can't name a method `main` because "
+                        "the type transitively extends `Main` class.");
+    }
+
+    for (int i = 0; i < __expr_context.nesting_level; ++i) {
+      for (int j = 0; j < __expr_context.if_bufs[i].len; ++j) {
+        __expr_context.if_bufs[i][j].assigned = false;
+      }
+      for (int j = 0; j < __expr_context.else_bufs[i].len; ++j) {
+        __expr_context.else_bufs[i][j].assigned = false;
+      }
+    }
+    __expr_context.nesting_level = 0;
+
 
     for (Statement *stmt : method->stmts) {
         stmt->accept(this);
     }
     // An undefined return expression may actually end up here.
     // Check parse.cpp
-    if (!method->ret_expr->is_undefined()) {
+    // A null expression may also come here because of the `main()` method.
+    if (!is_main_method && !method->ret_expr->is_undefined()) {
         assert(method->ret_expr);
         Type *ret_type = method->ret_expr->accept(this);
         if (ret_type->kind != TY::UNDEFINED) {
@@ -784,7 +846,7 @@ void MainTypeCheckVisitor::visit(Method *method, const char *class_name) {
     }
     this->curr_method = NULL;
 
-    cgen_end_method();
+    cgen_end_method(is_main_method);
 
     // Free arena for objects of function lifetime
     deallocate(MEM::FUNC);
@@ -1017,8 +1079,17 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
                             expr->id, "` does not denote a user-defined type");
             return this->type_table.undefined_type;
         }
+
+        if (type->id == this->type_table.main_cls_type->id) {
+            typecheck_error(expr->loc, "You can't create an object of the main class.");
+            return this->type_table.undefined_type;
+        }
         /// Codegen ///
-        __expr_context.llval = llvm_calloc(type, const_llv((int)type->sizeof_(), {}));
+        llvalue_t i8p = llvm_calloc(const_llv((int)type->sizeof_(), {}));
+        llvalue_t i8ppp = llvm_bitcast_i8p_to_i8ppp(i8p);
+        cgen_store_vptr(i8ppp, type);
+
+        __expr_context.llval = i8p;
         /// End of Codegen ///
         return type;
     } break;
@@ -1041,20 +1112,23 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         }
         /// Codegen ///
         // Save the len
-        __expr_context.len = len;
         constexpr int sizeof_int = 4;
+        Type *int_type = this->type_table.int_type;
         Type *int_arr_type = this->type_table.int_arr_type;
+        llvalue_t calloc_ptr;
         if (len.kind == LLVALUE::CONST) {
             // Add 1 more element which is used to save the length.
             len.val += 1;
-            __expr_context.llval = llvm_calloc(int_arr_type,
-                                               const_llv((int)(len.val * sizeof_int), {}));
+            calloc_ptr = llvm_calloc(const_llv((int)(len.val * sizeof_int), {}));
         } else {
             // Add 1 more element which is used to save the length.
             len = llvm_op('+', len, const_llv(1, {}));
             llvalue_t size = llvm_op('*', len, const_llv(sizeof_int, {}));
-            __expr_context.llval = llvm_calloc(int_arr_type, size);
+            calloc_ptr = llvm_calloc(size);
         }
+        llvalue_t i32p = llvm_bitcast_from_i8p(int_type, calloc_ptr);
+        llvm_store(int_type, len, i32p);
+        __expr_context.llval = i32p;
         /// End of Codegen ///
         return this->type_table.int_arr_type;
     } break;
@@ -1310,8 +1384,8 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
         llvm_branch_cond(cmp_res, lbls_len_check.end, lbls_len_check.start);
 
         llvm_gen_lbl(lbls_len_check.start);
-        // TODO: Do something better
-        emit("    EXIT\n\n");
+        emit("    call void @throw_oob()\n");
+        emit("    unreachable\n");
         llvm_gen_lbl(lbls_len_check.end);
 
 
@@ -1331,8 +1405,8 @@ Type* MainTypeCheckVisitor::visit(Expression *expr) {
             llvm_branch_cond(cmp_res, lbls_neg_check.start, lbls_neg_check.end);
 
             llvm_gen_lbl(lbls_neg_check.start);
-            // TODO: Do something better
-            emit("    EXIT\n\n");
+            emit("    call void @throw_oob()\n");
+            emit("    unreachable\n");
             llvm_gen_lbl(lbls_neg_check.end);
             // Note: As above, because we're indexing an i32*, the 4 bytes are
             // +1 offset.
@@ -1428,18 +1502,6 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
     if (lhs->kind == (int)LOCAL_KIND::FIELD) {
         ptr = cgen_get_field_ptr(lhs);
     }
-    // If it is an array, save the length in the
-    // first 4 bytes (i.e. its first element).
-    if (lhs->type->kind == TY::ARR) {
-        // Note that if we're here, `rhs_val`
-        // has the array we just allocated. What
-        // we need to is store in the first element
-        // of this array.
-        llvalue_t len = __expr_context.len;
-        // We don't really need to GEP because it's the first element.
-        //llvm_getelementptr_i32(rhs_val, {LLVALUE::CONST, (int)0});
-        llvm_store(this->type_table.int_type, len, rhs_val);
-    }
     // Bitcast the value to the type of the lhs
     if (lhs->type != rhs_type) {
         rhs_val = cgen_cast_value(rhs_val , rhs_type, lhs->type);
@@ -1451,8 +1513,8 @@ void MainTypeCheckVisitor::visit(AssignmentStatement *asgn_stmt) {
         // Just set `rhs_val` as the new llvalue.
         lhs->llval = rhs_val;
     }
-    // Track assignment
-    if (__expr_context.nesting_level) {
+    // Track assignment only for parameters and variables
+    if (__expr_context.nesting_level && lhs->kind != (int)LOCAL_KIND::FIELD) {
         TrackAssignment tasgn;
         tasgn.assigned = true;
         tasgn.llval = lhs->llval;
@@ -1715,6 +1777,7 @@ void MainTypeCheckVisitor::visit(IfStatement *if_stmt) {
         } else {
             tasgn.llval = method->locals[i]->llval;
         }
+        Local *local = method->locals[i];
         __expr_context.if_bufs[nesting_level - 1][i] = tasgn;
         __expr_context.else_bufs[nesting_level - 1][i] = tasgn;
     }
@@ -1724,6 +1787,30 @@ void MainTypeCheckVisitor::visit(IfStatement *if_stmt) {
     llvm_gen_lbl(if_lbl);
     __expr_context.in_if = true;
     if_stmt->then->accept(this);
+
+    // 2 bufs that track assignments for the 2 bodies we just processed (if and else)
+    TrackAssignmentBuf if_buf = __expr_context.if_bufs[nesting_level - 1];
+    TrackAssignmentBuf else_buf = __expr_context.else_bufs[nesting_level - 1];
+    
+    // Before moving to `else`, if `if` assigned, we want to _revert_ the choice,
+    // because the `else` may use a variable before assign it. Consider this:
+    // a = 0;
+    // if (...) {
+    //   a = 2;  // This was visited first and now `a->llval` is 2.
+    // } else {
+    //   b = a;  // Here, we use `a` before we assign to it, so `b` will get `2`,
+    //           // which is wrong.
+    // }
+    // TODO: That was a hacky choice as I found the bug. This bug might mean
+    // that we want to revisit a bigger part of the algorithm.
+    for (size_t i = 0; i < method->locals.len; ++i) {
+        bool assigned_if = if_buf[i].assigned;
+        if (assigned_if) {
+            Local *local = method->locals[i];
+            local->llval = else_buf[i].llval;
+        }
+    }
+
     // Save the last label in if, because this is the label / basic block
     // from which we jump to the `end_lbl`. And we need this info
     // for the emission of the phi node.
@@ -1737,10 +1824,6 @@ void MainTypeCheckVisitor::visit(IfStatement *if_stmt) {
     llvm_branch(end_lbl);
     llvm_gen_lbl(end_lbl);
     __expr_context.in_if = save_in_if;
-    
-    // 2 bufs that track assignments for the 2 bodies we just processed (if and else)
-    TrackAssignmentBuf if_buf = __expr_context.if_bufs[nesting_level - 1];
-    TrackAssignmentBuf else_buf = __expr_context.else_bufs[nesting_level - 1];
     
     // Go through all the locals and apply the 4 cases above.
     for (size_t i = 0; i < method->locals.len; ++i) {
@@ -1976,8 +2059,11 @@ void MainTypeCheckVisitor::visit(WhileStatement *while_stmt) {
     Note: Here we have already generated the initial cond code when we
     typechecked it.
     */
-
-    llvm_label_t pred_lbl = __expr_context.curr_lbl;
+    
+    const char *pred_lbl_str = (while_stmt->pred_lbl == NULL) ?
+                                __expr_context.curr_lbl.lbl : while_stmt->pred_lbl;
+    while_stmt->pred_lbl = pred_lbl_str;
+    llvm_label_t pred_lbl = {pred_lbl_str};
     llvm_label_t loop_lbl, after_loop_lbl;
     long lbl = gen_lbl();
     loop_lbl.construct("while", lbl);
@@ -2124,10 +2210,15 @@ void MainTypeCheckVisitor::visit(WhileStatement *while_stmt) {
     set_lbl(save_lbl);
     config.codegen = false;
     while_stmt->body->accept(this);
-    llvm_label_t last_lbl = __expr_context.curr_lbl;
+    while_stmt->cond->accept(this);
+    const char *last_lbl_str = (while_stmt->last_lbl == NULL) ?
+                                __expr_context.curr_lbl.lbl : while_stmt->last_lbl;
+    while_stmt->last_lbl = last_lbl_str;
+    llvm_label_t last_lbl = {last_lbl_str};
     set_reg(save_reg);
     set_lbl(save_lbl);
     config.codegen = save_codegen;
+
     
     /// Now that we know the llvalue that the locals got in the loop,
     /// generate the phi nodes. Note that they're locals that might have been
@@ -2188,6 +2279,9 @@ void MainTypeCheckVisitor::visit(PrintStatement *print_stmt) {
         typecheck_error(print_stmt->to_print->loc,
                         "Print statement accepts only integer expressions.");
     }
+    /// Codegen ///
+    llvalue_t to_print = __expr_context.llval;
+    cgen_print_stmt(to_print);
 }
 
 const char *Type::name() const {
@@ -2209,4 +2303,29 @@ Method::Method(MethodDeclaration *method_decl) {
     stmts = method_decl->stmts;
     ret_expr = method_decl->ret;
     loc = method_decl->loc;
+}
+
+
+Method *Method::construct_main_method(DeclarationVisitor *visitor, MainClass *main_class) {
+    Method *method = (Method *) allocate_zero(sizeof(Method), MEM::TYPECHECK);
+    method->id = main_method_string;
+    size_t locals_size = main_class->vars.len;
+    method->locals.reserve(locals_size);
+
+    for (LocalDeclaration *var : main_class->vars) {
+        if (method->locals.find(var->id)) {
+            typecheck_error(var->loc, "Variable `", var->id, "` is already defined",
+                            " in method `", method->id, "`");
+        } else {
+            Var *v = var->accept(visitor);
+            method->locals.insert(v->id, v);
+        }
+    }
+
+    method->param_len = 0;
+    method->stmts = main_class->stmts;
+    method->ret_type = visitor->type_table.int_type;
+    method->ret_expr = NULL;
+    method->loc = main_class->loc;
+    return method;
 }

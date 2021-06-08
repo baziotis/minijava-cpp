@@ -1,0 +1,3 @@
+A.foo: 0
+B.main: 8
+ERROR_overriding_main.java: 13:  Semantic Error: In type: `B` you can't name a method `main` because the type transitively extends `Main` class.

@@ -1,17 +1,14 @@
 // -unused -no-style -codegen
 class Main {
-    public static void main(String[] a) { }
-}
-
-class A {
-    int[] a;
     // Constant propagate ndx
-    public int constant_propagate_integer() {
+    public static void main(String[] a) {
         int ndx;
         int[] arr;
         ndx = 8;
         arr = new int[10];
+        System.out.println(ndx); // 8
+        System.out.println(arr[1]); // 0
         arr[ndx] = 3;
-        return 1;
+        System.out.println(arr[8]); // 3
     }
 }

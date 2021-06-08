@@ -5,18 +5,15 @@ long gen_lbl();
 
 struct llvm_label_t {
     const char *lbl;
-    bool generated;
 
-    llvm_label_t() : lbl(NULL), generated(false) { }
+    llvm_label_t() : lbl(NULL) { }
 
     llvm_label_t(const char *_lbl) {
         // Assume that the label is string literal
         lbl = _lbl;
-        generated = false;
     }
 
     void construct(const char *_lbl, long num = -1) {
-        assert(!generated);
         assert(_lbl);
         assert(lbl == NULL);
         if (num == -1) {
@@ -63,9 +60,6 @@ typedef Buf<TrackAssignment> TrackAssignmentBuf;
 struct ExprContext {
     llvm_label_t curr_lbl;
     llvalue_t llval;
-    // Saved by EXPR::ARR_ALLOC and
-    // used only in AssignmentStatement only for arrays.
-    llvalue_t len;
 
     Method *method;
 
@@ -91,13 +85,17 @@ void emit(const char *fmt, ...);
 llvalue_t llvm_op_const(int op, int val1, int val2);
 llvalue_t llvm_op(int op, llvalue_t res1, llvalue_t res2);
 llvalue_t llvm_bitcast_from_i8p(Type *type, llvalue_t ptr);
+llvalue_t llvm_bitcast_i8p_to_i8ppp(llvalue_t i8p);
+void cgen_store_vptr(llvalue_t i8ppp, IdType *type);
+void emit_vmethod_signature(Type *base_obj_ty, Method *method);
 llvalue_t cgen_get_virtual_method(Type *base_obj_ty, llvalue_t base_obj, Method *method);
 llvalue_t cgen_get_field_ptr(Local *field);
 llvalue_t llvm_getelementptr_i32(llvalue_t ptr, llvalue_t index);
 llvalue_t llvm_getelementptr_i8(llvalue_t ptr, size_t offset);
 llvalue_t llvm_load(Type *type, llvalue_t ptr);
 llvalue_t not_llvalue(llvalue_t v);
-llvalue_t llvm_calloc(Type *type, llvalue_t sz);
+llvalue_t llvm_calloc(llvalue_t sz);
+void cgen_print_stmt(llvalue_t to_print);
 void llvm_gen_lbl(llvm_label_t l);
 void llvm_branch_cond(llvalue_t cond, llvm_label_t l1, llvm_label_t l2);
 void llvm_branch(llvm_label_t l);
@@ -109,7 +107,7 @@ llvalue_t llvm_call(Type *ret_type, Type *base_obj_ty, llvalue_t base_obj,
                     FuncArr<llvalue_t> values);
 llvalue_t llvm_alloca(Type *type);
 void llvm_store(Type *type, llvalue_t value, llvalue_t ptr);
-void cgen_start_method(Method *method, const char *class_name);
-void cgen_end_method();
+void cgen_start_method(Method *method, const char *class_name, bool is_main_method);
+void cgen_end_method(bool is_main_method);
 llvalue_t cgen_cast_value(llvalue_t value, Type *from_ty, Type *to_ty);
 void llvm_ret(Type *ty, llvalue_t val);

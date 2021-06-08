@@ -1,4 +1,4 @@
-class MoreThan4 {
+class Main {
   public static void main(String[] a) {
     System.out.println(new MT4().Start(1, 2, 3, 4, 5, 6));
   }

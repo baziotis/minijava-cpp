@@ -1,20 +1,19 @@
 // -unused -no-style -codegen
 class Main {
-    public static void main(String[] a) { }
+    public static void main(String[] args) {
+        int b;
+        A aa;
+
+        aa = new A();
+        b = aa.test(2);  // 8
+        b = 3 + b; // 11
+        System.out.println(b);
+    }
 }
 
 class A {
     public int test(int a) {
+        // Constant-fold the RHS part.
         return a + (((1 + 2) + 3));
-    }
-
-    public int foo() {
-        // Constant propagating `a` and
-        // then constant folding 3 + 2;
-        int a;
-        int b;
-        a = 2;
-        b = 3 + a;
-        return b;
     }
 }

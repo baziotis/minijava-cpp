@@ -1,4 +1,4 @@
-class BinaryTree {
+class Main {
   public static void main(String[] a) { System.out.println(new BT().Start()); }
 }
 

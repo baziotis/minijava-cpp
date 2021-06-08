@@ -1,0 +1,3 @@
+ERROR_create_objects_of_main_cls.java: 7:  Semantic Error: You can't declare a local of type of the main class.
+A.foo: 0
+ERROR_create_objects_of_main_cls.java: 8:  Semantic Error: You can't create an object of the main class.

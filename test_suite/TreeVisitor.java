@@ -2,7 +2,7 @@
 // file except the visitor classes and the accept method
 // in the Tree class
 
-class TreeVisitor {
+class Main {
   public static void main(String[] a) { System.out.println(new TV().Start()); }
 }
 
@@ -29,7 +29,9 @@ class TV {
     System.out.println(100000000);
     v = new MyVisitor();
     System.out.println(50000000);
+    System.out.println(17);
     nti = root.accept(v);
+    System.out.println(18);
     System.out.println(100000000);
     System.out.println(root.Search(24));
     System.out.println(root.Search(12));
@@ -316,7 +318,8 @@ class Visitor {
 
   public int visit(Tree n) {
     int nti;
-
+    
+    System.out.println(666);
     if (n.GetHas_Right()) {
       r = n.GetRight();
       nti = r.accept(this);
@@ -338,12 +341,14 @@ class MyVisitor extends Visitor {
   public int visit(Tree n) {
     int nti;
 
+    System.out.println(999);
     if (n.GetHas_Right()) {
       r = n.GetRight();
       nti = r.accept(this);
     } else
       nti = 0;
 
+    System.out.println(111);
     System.out.println(n.GetKey());
 
     if (n.GetHas_Left()) {
@@ -351,6 +356,7 @@ class MyVisitor extends Visitor {
       nti = l.accept(this);
     } else
       nti = 0;
+    System.out.println(222);
 
     return 0;
   }

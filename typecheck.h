@@ -59,6 +59,7 @@ struct SerializedHashTable {
 struct IdType;
 struct Type;
 struct VirtualTable;
+struct Method;
 
 // A SerializedHashTable with just hardcoded the primitive types.
 struct TypeTable {
@@ -66,6 +67,8 @@ struct TypeTable {
     Type *bool_type;
     Type *int_type;
     Type *int_arr_type;
+    IdType *main_cls_type;
+    Method *main_method;
     SerializedHashTable<IdType*> type_table;
     Buf<IdType*> could_not_be_inserted;
 
@@ -85,6 +88,10 @@ struct TypeTable {
     void insert(const char *id, IdType* v);
 
     void initialize(size_t n);
+
+    size_t len_inserted() const {
+      return type_table.len;
+    }
 
     inline IdType* find(const char *key) {
         return type_table.find(key);
@@ -291,9 +298,7 @@ struct Method : public TypeCheckCustomAllocation {
     Buf<Statement*> stmts;
     Expression *ret_expr;
 
-    Method() { }
-
-    //Method() = delete;
+    Method() = delete;
     Method(MethodDeclaration *method_decl);
 
     void accept(MainTypeCheckVisitor *v, const char *class_name) {
@@ -303,6 +308,8 @@ struct Method : public TypeCheckCustomAllocation {
     size_t offsetof_() const {
         return offset;
     }
+    
+    static Method *construct_main_method(DeclarationVisitor *visitor, MainClass *main_class);
 };
 
 #include <new>
@@ -311,6 +318,7 @@ struct IdType : public Type {
     const char *id;
     SerializedHashTable<Local*> fields;
     SerializedHashTable<Method*> methods;
+    ssize_t vmethods_len = -1;
     IdType *parent;
     size_t __sizeof;
     // Useful only for the virtual table generation
