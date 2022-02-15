@@ -27,7 +27,6 @@ in the following speeds (CPU: Intel Core i5-6500 @ 3.2ghz, RAM: 16G ).
 | Build          | LOC / second    |
 | :------------: | :-------------: |
 | Optimized      | 1.05 million    |
-| Unoptimized    | 700 thousands   |
 
 This is relatively good but it could be better: (compiler internals follow):
 - The memory consumption can be reduced. But I don't think that the _max_ memory consumption can be reduced.  In any case, we can throw the memory away after compiling a method or a class. The problem is that we do have  to first allocate for all the methods because of parsing. And we can't really make an one-pass compiler because   of order-independent declarations (i.e. `A` can be used before it's defined). If we could do this one pass,  it would probably improve performance by a large margin.
